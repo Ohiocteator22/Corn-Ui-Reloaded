@@ -1,5 +1,5 @@
 if game.PlaceId == 2092166489 then
-    local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/CornUi_Mobile-PC-compatible/refs/heads/main/CornUi.lua"))()
+    local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/refs/heads/main/Sourse/CornUi.lua"))()
     local Window = Library:CreateWindow({
     Name = "Corn Hub",
     Subtitle = "By Lifeless",
