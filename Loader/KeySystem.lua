@@ -7,9 +7,9 @@ local HttpService = game:GetService("HttpService")
 
 local KeySystem = {}
 
-local VALIDATE_URL = "https://YOUR-WORKER-SUBDOMAIN.workers.dev/validate?key="
-local LINKVERTISE_URL = "YOUR_LINKVERTISE_URL" -- leads to key.html
-local LOOTLABS_URL    = "YOUR_LOOTLABS_URL"    -- also leads to key.html — use this if Linkvertise's "wait 60 min" cooldown hits
+local VALIDATE_URL = "https://keysystem.chauhannityam-1512.workers.dev/validate?key="
+local LINKVERTISE_URL = "https://link-target.net/7571152/6d0D7vORtyHm" -- leads to key.html
+local LOOTLABS_URL    = "https://loot-link.com/s?1PlgNDOL"    -- also leads to key.html — use this if Linkvertise's "wait 60 min" cooldown hits
 local SAVE_PATH    = "CornUi_Key.txt"
 
 local function isKeyValid(key)
