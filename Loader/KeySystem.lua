@@ -7,8 +7,9 @@ local HttpService = game:GetService("HttpService")
 
 local KeySystem = {}
 
-local VALIDATE_URL = "https://keysystem.chauhannityam-1512.workers.dev/validate?key="
-local GET_KEY_URL  = "https://link-target.net/7571152/6d0D7vORtyHm" -- the Linkvertise link that leads to key.html
+local VALIDATE_URL = "https://YOUR-WORKER-SUBDOMAIN.workers.dev/validate?key="
+local LINKVERTISE_URL = "YOUR_LINKVERTISE_URL" -- leads to key.html
+local LOOTLABS_URL    = "YOUR_LOOTLABS_URL"    -- also leads to key.html — use this if Linkvertise's "wait 60 min" cooldown hits
 local SAVE_PATH    = "CornUi_Key.txt"
 
 local function isKeyValid(key)
@@ -44,8 +45,8 @@ function KeySystem.Prompt(onSuccess)
     ScreenGui.Parent = (gethui and gethui()) or game:GetService("CoreGui")
 
     local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(0, 320, 0, 190)
-    Frame.Position = UDim2.new(0.5, -160, 0.5, -95)
+    Frame.Size = UDim2.new(0, 320, 0, 218)
+    Frame.Position = UDim2.new(0.5, -160, 0.5, -109)
     Frame.BackgroundColor3 = Color3.fromRGB(25, 27, 20)
     Frame.BorderSizePixel = 0
     Frame.Parent = ScreenGui
@@ -77,18 +78,43 @@ function KeySystem.Prompt(onSuccess)
     Submit.Font = Enum.Font.GothamBold
     Submit.Parent = Frame
 
-    local GetKey = Instance.new("TextButton")
-    GetKey.Text = "Get Key"
-    GetKey.Size = UDim2.new(1, -30, 0, 28)
-    GetKey.Position = UDim2.new(0, 15, 0, 148)
-    GetKey.BackgroundTransparency = 1
-    GetKey.TextColor3 = Color3.fromRGB(163, 172, 116)
-    GetKey.Parent = Frame
+    local GetLinkvertise = Instance.new("TextButton")
+    GetLinkvertise.Text = "Linkvertise"
+    GetLinkvertise.Size = UDim2.new(0.5, -18, 0, 28)
+    GetLinkvertise.Position = UDim2.new(0, 15, 0, 148)
+    GetLinkvertise.BackgroundTransparency = 1
+    GetLinkvertise.TextColor3 = Color3.fromRGB(163, 172, 116)
+    GetLinkvertise.Parent = Frame
 
-    GetKey.MouseButton1Click:Connect(function()
+    local GetLootLabs = Instance.new("TextButton")
+    GetLootLabs.Text = "LootLabs"
+    GetLootLabs.Size = UDim2.new(0.5, -18, 0, 28)
+    GetLootLabs.Position = UDim2.new(0.5, 3, 0, 148)
+    GetLootLabs.BackgroundTransparency = 1
+    GetLootLabs.TextColor3 = Color3.fromRGB(163, 172, 116)
+    GetLootLabs.Parent = Frame
+
+    local Hint = Instance.new("TextLabel")
+    Hint.Text = "Hitting the 60-min Linkvertise wait? Try LootLabs instead."
+    Hint.Size = UDim2.new(1, -30, 0, 28)
+    Hint.Position = UDim2.new(0, 15, 0, 178)
+    Hint.BackgroundTransparency = 1
+    Hint.TextColor3 = Color3.fromRGB(139, 138, 120)
+    Hint.TextSize = 11
+    Hint.TextWrapped = true
+    Hint.Parent = Frame
+
+    GetLinkvertise.MouseButton1Click:Connect(function()
         if setclipboard then
-            setclipboard(GET_KEY_URL)
-            Title.Text = "Link copied!"
+            setclipboard(LINKVERTISE_URL)
+            Title.Text = "Linkvertise link copied!"
+        end
+    end)
+
+    GetLootLabs.MouseButton1Click:Connect(function()
+        if setclipboard then
+            setclipboard(LOOTLABS_URL)
+            Title.Text = "LootLabs link copied!"
         end
     end)
 
