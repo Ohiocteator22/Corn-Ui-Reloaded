@@ -16,6 +16,11 @@ end
 
 function Rivals()
   loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/refs/heads/main/Scripts/Rivals.lua"))()
+end
+
+function Aimlock()
+  loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/refs/heads/main/Scripts/Universal%20Aimlock.lua"))()
+end
 --functions only--
 if game.PlaceId == 3101667897 then
   LOS()
@@ -35,6 +40,10 @@ end
 
 if game.PlaceId == 17625359962 then
     Rivals()
+end
+
+if game.PlaceId == 136801880565837 or game.PlaceId == 90568084448279 or game.PlaceId == 122446657157717 then
+  Aimlock()
 end
 
 
