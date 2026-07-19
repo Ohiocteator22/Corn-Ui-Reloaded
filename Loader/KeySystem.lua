@@ -7,7 +7,7 @@ local HttpService = game:GetService("HttpService")
 
 local KeySystem = {}
 
-local VALIDATE_URL = "keysystem.chauhannityam-1512.workers.dev/validate?key="
+local VALIDATE_URL = "https://keysystem.chauhannityam-1512.workers.dev/validate?key="
 local SAVE_PATH = "CornUi_Key.txt"
 
 -- Each tier needs its own Linkvertise/LootLabs link, set to require the
