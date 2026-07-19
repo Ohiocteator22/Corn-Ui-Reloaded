@@ -13,9 +13,9 @@ local SAVE_PATH = "CornUi_Key.txt"
 -- Each tier needs its own Linkvertise/LootLabs link, set to require the
 -- matching number of checkpoints, both pointing at key.html?tier=<id>.
 local TIERS = {
-    { id = "1day", label = "1 Day  (1 checkpoint)",  Linkvertise = "YOUR_LINKVERTISE_1DAY_URL", LootLabs = "YOUR_LOOTLABS_1DAY_URL" },
-    { id = "3day", label = "3 Days (3 checkpoints)", Linkvertise = "YOUR_LINKVERTISE_3DAY_URL", LootLabs = "YOUR_LOOTLABS_3DAY_URL" },
-    { id = "7day", label = "7 Days (5 checkpoints)", Linkvertise = "YOUR_LINKVERTISE_7DAY_URL", LootLabs = "YOUR_LOOTLABS_7DAY_URL" },
+    { id = "1day", label = "1 Day  (1 checkpoint)",  Linkvertise = "https://link-center.net/7571152/xMThd1NH3TJz", LootLabs = "https://lootdest.org/s?J5g6qRM6" },
+    { id = "3day", label = "3 Days (3 checkpoints)", Linkvertise = "https://direct-link.net/7571152/TdvvLouv7T2W", LootLabs = "https://loot-link.com/s?QUlCKmPG" },
+    { id = "7day", label = "7 Days (5 checkpoints)", Linkvertise = "https://link-hub.net/7571152/hYMDRpzZlS9I", LootLabs = "https://loot-link.com/s?CbWWsAC4" },
 }
 
 local function isKeyValid(key)
