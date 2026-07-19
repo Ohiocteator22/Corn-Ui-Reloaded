@@ -27,5 +27,9 @@ if game.PlaceId == 2092166489 then
   Area51()
 end
 
+if game.PlaceId == 1962086868 then
+  TOH()
+end
+
 
 
