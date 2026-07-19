@@ -10,6 +10,10 @@ function Area51()
   loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/refs/heads/main/Scripts/Area%2051.lua"))()
 end
 
+function TOH()
+  loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/refs/heads/main/Scripts/TowerOfHell.lua"))()
+end
+
 --functions only--
 if game.PlaceId == 3101667897 then
   LOS()
