@@ -14,6 +14,8 @@ function TOH()
   loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/refs/heads/main/Scripts/TowerOfHell.lua"))()
 end
 
+function Rivals()
+  loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/refs/heads/main/Scripts/Rivals.lua"))()
 --functions only--
 if game.PlaceId == 3101667897 then
   LOS()
@@ -29,6 +31,10 @@ end
 
 if game.PlaceId == 1962086868 then
   TOH()
+end
+
+if game.PlaceId == 17625359962 then
+    Rivals()
 end
 
 
