@@ -50,7 +50,7 @@ if game.PlaceId == 136801880565837 or game.PlaceId == 90568084448279 or game.Pla
   Aimlock()
 end
 
-if game.Placeid == 3956818381 then
+if game.PlaceId == 3956818381 then
   NinjaLegends()
 end
 
