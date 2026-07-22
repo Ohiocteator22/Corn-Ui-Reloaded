@@ -42,7 +42,7 @@ if game.PlaceId == 17625359962 then
     Rivals()
 end
 
-if game.PlaceId == 136801880565837 or game.PlaceId == 90568084448279 or game.PlaceId == 122446657157717 or game.PlaceId == 12355337193 then
+if game.PlaceId == 136801880565837 or game.PlaceId == 90568084448279 or game.PlaceId == 122446657157717 then
   Aimlock()
 end
 
