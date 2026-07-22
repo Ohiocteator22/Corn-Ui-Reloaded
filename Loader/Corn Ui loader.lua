@@ -21,6 +21,10 @@ end
 function Aimlock()
   loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/refs/heads/main/Scripts/Universal%20Aimlock.lua"))()
 end
+
+function NinjaLegends()
+  loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/refs/heads/main/Scripts/Ninja%20Legends.lua"))()
+end
 --functions only--
 if game.PlaceId == 3101667897 then
   LOS()
@@ -46,5 +50,8 @@ if game.PlaceId == 136801880565837 or game.PlaceId == 90568084448279 or game.Pla
   Aimlock()
 end
 
+if game.Placeid == 3956818381 then
+  NinjaLegends()
+end
 
 
