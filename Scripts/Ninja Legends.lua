@@ -11,6 +11,7 @@ local Window = Corn:CreateWindow({
 local AutoClick = false
 local FarmCoinEnabled = false
 local TargetNinjitsu = 0
+local hoopFarming = false
 
 
 local Players = game:GetService("Players")
@@ -98,6 +99,69 @@ local function FarmCoins()
 end
 
 
+local function FarmHoops()
+
+    while true do
+
+        if hoopFarming then
+
+            local player = game.Players.LocalPlayer
+            local character = player.Character or player.CharacterAdded:Wait()
+            local hrp = character:WaitForChild("HumanoidRootPart")
+
+            local hoopsFolder = workspace:FindFirstChild("Hoops")
+
+            if hoopsFolder then
+
+                for _, hoop in ipairs(hoopsFolder:GetChildren()) do
+
+                    if not hoopFarming then
+                        break
+                    end
+
+
+                    local target
+
+
+                    if hoop:IsA("BasePart") then
+
+                        target = hoop.CFrame
+
+
+                    elseif hoop:IsA("Model") then
+
+                        if hoop.PrimaryPart then
+                            target = hoop.PrimaryPart.CFrame
+                        else
+                            local part = hoop:FindFirstChildWhichIsA("BasePart")
+
+                            if part then
+                                target = part.CFrame
+                            end
+                        end
+
+                    end
+
+
+                    if target then
+
+                        hrp.CFrame = target + Vector3.new(0,3,0)
+
+                        task.wait(0.2)
+
+                    end
+
+                end
+
+            end
+
+        end
+
+        task.wait(0.2)
+
+    end
+
+end
 --functions--
 local Tab = Window:CreateTab("Main", {Icon = nil})
 
@@ -165,8 +229,16 @@ end)
 
 
 --end of this special child--
+Tab:CreateToggle({
+    Name = "Farm Hoops",
+    Default = false,
+    Callback = function(state)
+        hoopFarming = state
+    end
 
+})
 
 
 task.spawn(FarmNinjustsu)
 task.spawn(FarmCoins)
+task.spawn(FarmHoops)
