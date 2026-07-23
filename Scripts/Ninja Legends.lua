@@ -10,6 +10,7 @@ local Window = Corn:CreateWindow({
 
 local AutoClick = false
 local FarmCoinEnabled = false
+local TargetNinjitsu = 0
 
 
 local Players = game:GetService("Players")
@@ -97,7 +98,7 @@ local function FarmCoins()
 end
 
 
-
+--functions--
 local Tab = Window:CreateTab("Main", {Icon = nil})
 
 local Section = Tab:CreateSection("Farms")
@@ -127,6 +128,43 @@ Tab:CreateToggle({
 
     end
 })
+--special child btw--
+Tab:CreateTextbox({
+    Name = "Sell All Ninjitsu threshold",
+    Placeholder = "Example: 100000",
+    Callback = function(text)
+        TargetNinjitsu = tonumber(text) or 0
+    end
+})
+task.spawn(function()
+
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+
+    local Ninjitsu = LocalPlayer.leaderstats:WaitForChild("Ninjitsu")
+    local SellPart = workspace.sellAreaCircles.sellAreaCircle.circleInner
+
+    while true do
+
+        if TargetNinjitsu > 0 and Ninjitsu.Value >= TargetNinjitsu then
+
+            local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+            local root = character:WaitForChild("HumanoidRootPart")
+
+            root.CFrame = SellPart.CFrame + Vector3.new(0, 3, 0)
+
+            task.wait(1)
+
+        end
+
+        task.wait(0.1)
+
+    end
+
+end)
+
+
+--end of this special child--
 
 
 
