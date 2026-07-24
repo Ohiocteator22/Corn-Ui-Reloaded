@@ -10,14 +10,10 @@ local Window = Corn:CreateWindow({
 
 local AutoClick = false
 local FarmCoinEnabled = false
-local TargetNinjitsu = 0
-local hoopFarming = false
-
-
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
-
-
+local RobotLoop = false
+--variables--
 local function FarmNinjustsu()
 
     while true do
@@ -38,6 +34,69 @@ local function FarmNinjustsu()
 end
 
 
+
+
+-- Shop Area
+local function TeleportShop()
+    local character = LocalPlayer.Character
+    if not character then return end
+
+    character:PivotTo(
+        workspace.shopAreaCircles.shopAreaCircle.circleInner.CFrame
+    )
+end
+
+-- Skills Area
+local function TeleportSkills()
+    local character = LocalPlayer.Character
+    if not character then return end
+
+    character:PivotTo(
+        workspace.skillAreaCircles.skillsAreaCircle.circleInner.CFrame
+    )
+end
+
+-- Safezone 13
+local function TeleportSafezone13()
+    local character = LocalPlayer.Character
+    if not character then return end
+
+    character:PivotTo(
+        workspace.safezoneParts:GetChildren()[13].CFrame
+    )
+end
+
+-- Safezone 12
+local function TeleportSafezone12()
+    local character = LocalPlayer.Character
+    if not character then return end
+
+    character:PivotTo(
+        workspace.safezoneParts:GetChildren()[12].CFrame
+    )
+end
+
+-- Robot Boss Loop
+local function StartRobotBossLoop()
+    RobotLoop = true
+
+    task.spawn(function()
+        while RobotLoop do
+            local character = LocalPlayer.Character
+            local boss = workspace.bossFolder:FindFirstChild("RobotBoss")
+
+            if character and boss and boss:FindFirstChild("Head") then
+                character:PivotTo(boss.Head.CFrame)
+            end
+
+            task.wait()
+        end
+    end)
+end
+
+local function StopRobotBossLoop()
+    RobotLoop = false
+end
 
 local function FarmCoins()
 
@@ -99,70 +158,7 @@ local function FarmCoins()
 end
 
 
-local function FarmHoops()
 
-    while true do
-
-        if hoopFarming then
-
-            local player = game.Players.LocalPlayer
-            local character = player.Character or player.CharacterAdded:Wait()
-            local hrp = character:WaitForChild("HumanoidRootPart")
-
-            local hoopsFolder = workspace:FindFirstChild("Hoops")
-
-            if hoopsFolder then
-
-                for _, hoop in ipairs(hoopsFolder:GetChildren()) do
-
-                    if not hoopFarming then
-                        break
-                    end
-
-
-                    local target
-
-
-                    if hoop:IsA("BasePart") then
-
-                        target = hoop.CFrame
-
-
-                    elseif hoop:IsA("Model") then
-
-                        if hoop.PrimaryPart then
-                            target = hoop.PrimaryPart.CFrame
-                        else
-                            local part = hoop:FindFirstChildWhichIsA("BasePart")
-
-                            if part then
-                                target = part.CFrame
-                            end
-                        end
-
-                    end
-
-
-                    if target then
-
-                        hrp.CFrame = target + Vector3.new(0,3,0)
-
-                        task.wait(0.2)
-
-                    end
-
-                end
-
-            end
-
-        end
-
-        task.wait(0.2)
-
-    end
-
-end
---functions--
 local Tab = Window:CreateTab("Main", {Icon = nil})
 
 local Section = Tab:CreateSection("Farms")
@@ -192,53 +188,52 @@ Tab:CreateToggle({
 
     end
 })
---special child btw--
-Tab:CreateTextbox({
-    Name = "Sell All Ninjitsu threshold",
-    Placeholder = "Example: 100000",
-    Callback = function(text)
-        TargetNinjitsu = tonumber(text) or 0
+
+local Tab2 = Window:CreateTab("Teleports", {Icon = nil})
+
+Tab2:CreateLabel("Teleports to Locations!")
+
+local Section2 = Tab2:CreateSection("Teleports")
+Tab2:CreateButton({
+    Name = "Teleport to Shop",
+    Callback = function()
+        TeleportShop()
     end
 })
-task.spawn(function()
 
-    local Players = game:GetService("Players")
-    local LocalPlayer = Players.LocalPlayer
-
-    local Ninjitsu = LocalPlayer.leaderstats:WaitForChild("Ninjitsu")
-    local SellPart = workspace.sellAreaCircles.sellAreaCircle.circleInner
-
-    while true do
-
-        if TargetNinjitsu > 0 and Ninjitsu.Value >= TargetNinjitsu then
-
-            local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-            local root = character:WaitForChild("HumanoidRootPart")
-
-            root.CFrame = SellPart.CFrame + Vector3.new(0, 3, 0)
-
-            task.wait(1)
-
-        end
-
-        task.wait(0.1)
-
+Tab2:CreateButton({
+    Name = "Teleport to Skills",
+    Callback = function()
+        TeleportSkills()
     end
+})
 
-end)
+Tab2:CreateButton({
+    Name = "Teleport To Purple Crystal",
+    Callback = function()
+        TeleportSafezone13()
+    end
+})
 
+Tab2:CreateButton({
+    Name = "Teleport To Blue Crystal",
+    Callback = function()
+        TeleportSafezone12()
+    end
+})
 
---end of this special child--
-Tab:CreateToggle({
-    Name = "Farm Hoops",
+Tab2:CreateToggle({
+    Name = "Robot Boss Farm Loop",
     Default = false,
     Callback = function(state)
-        hoopFarming = state
+        if state then
+            StartRobotBossLoop()
+        else
+            StopRobotBossLoop()
+        end
     end
-
 })
 
 
 task.spawn(FarmNinjustsu)
 task.spawn(FarmCoins)
-task.spawn(FarmHoops)
