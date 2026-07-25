@@ -1,14 +1,3 @@
---[[
-    Corn Hub 🥀
-    Speed Simulator Port
-    CornUi v1.5 Stable
-
-    Original Script:
-    OrionLib Speed Simulator Hub
-
-    Ported to:
-    CornUi API
-]]
 
 if game.PlaceId ~= 3101667897 then
     return
