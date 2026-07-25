@@ -13,6 +13,7 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -38,6 +39,191 @@ function Library:SetFlag(name, value)
 	if not name then return end
 	Library.Flags[name] = value
 	flagChangedEvent:Fire(name, value)
+end
+
+-- Elements created with a config.Flag register their {Set, Get} handle here
+-- too (see setSearchMeta's siblings below), so Config:Load can push a saved
+-- value back into the *element itself* — updating what's on screen, not just
+-- Library.Flags — via Library.FlagElements[name]:Set(value). Populated by
+-- each element-creation function; not meant to be written to directly.
+Library.FlagElements = {}
+
+-- ===================== CONFIG SYSTEM =====================
+-- Persists Library.Flags (+ the active theme name) to a JSON file on disk,
+-- and restores them on load. Two things make this more than a plain
+-- JSONEncode(Library.Flags):
+--   1. Color3 and Enum values (from ColorPickers/Keybinds) aren't JSON-safe
+--      on their own, so they're wrapped/unwrapped through the two helpers
+--      below.
+--   2. Loading a flag doesn't just poke Library.Flags — if the flag belongs
+--      to a live element (tracked in Library.FlagElements, populated by
+--      every Toggle/Slider/Dropdown/Textbox/Keybind/ColorPicker), it calls
+--      that element's :Set() instead, so the UI visually updates too.
+--
+-- IMPORTANT ordering note: every element sets its own default value into
+-- Library.Flags the moment it's created (config.Flag + config.Default), so
+-- calling LoadConfig *before* your tabs/elements exist will just get
+-- overwritten as each element is built. Call Corn:LoadConfig(name, Window)
+-- AFTER your whole UI (all tabs/sections/elements) has been created —
+-- typically the very last line before handing control back to the user.
+--
+-- Files are flat, matching the convention already used by KeySystem.lua's
+-- SAVE_PATH ("CornUi_Key.txt") rather than introducing folder APIs
+-- (makefolder/isfolder) that not every executor implements consistently.
+
+local CONFIG_PREFIX = "CornUi_Config_"
+local CONFIG_SUFFIX = ".json"
+
+local function configPath(name)
+	-- Keep filenames boring and predictable — strip anything that isn't
+	-- alphanumeric/underscore/dash so a bad `name` can't escape the prefix
+	-- or produce a path Roblox's file API rejects outright.
+	local safeName = tostring(name or "default"):gsub("[^%w_%-]", "_")
+	if safeName == "" then safeName = "default" end
+	return CONFIG_PREFIX .. safeName .. CONFIG_SUFFIX
+end
+
+local function serializeFlagValue(value)
+	local kind = typeof(value)
+	if kind == "Color3" then
+		return { __type = "Color3", r = value.R, g = value.G, b = value.B }
+	elseif kind == "EnumItem" then
+		-- e.g. Enum.KeyCode.F -> { __type = "Enum", enum = "KeyCode", name = "F" }
+		local enumName = tostring(value.EnumType):gsub("^Enum%.", "")
+		return { __type = "Enum", enum = enumName, name = value.Name }
+	elseif kind == "number" or kind == "string" or kind == "boolean" then
+		return value
+	else
+		-- Anything else (Vector3, UDim2, nil, ...) isn't currently produced by
+		-- a flag-bearing element, but fall back to a readable string instead
+		-- of letting JSONEncode error out the whole save.
+		return tostring(value)
+	end
+end
+
+local function deserializeFlagValue(value)
+	if type(value) == "table" and value.__type == "Color3" then
+		return Color3.new(value.r, value.g, value.b)
+	elseif type(value) == "table" and value.__type == "Enum" then
+		local ok, enumType = pcall(function() return Enum[value.enum] end)
+		if not ok or not enumType then return nil end
+		local ok2, item = pcall(function() return enumType[value.name] end)
+		if ok2 then return item end
+		return nil
+	else
+		return value
+	end
+end
+
+-- Library:SaveConfig(name?) — writes every current flag (plus the active
+-- theme name) to CornUi_Config_<name>.json. Returns true/false.
+function Library:SaveConfig(name)
+	if not (writefile) then
+		warn("[MobileUILib] SaveConfig: this executor doesn't expose writefile")
+		return false
+	end
+
+	local data = { Flags = {}, Theme = Library._currentThemeName or "Dark" }
+	for flagName, value in pairs(Library.Flags) do
+		data.Flags[flagName] = serializeFlagValue(value)
+	end
+
+	local ok, json = pcall(function() return HttpService:JSONEncode(data) end)
+	if not ok then
+		warn("[MobileUILib] SaveConfig: JSONEncode failed — " .. tostring(json))
+		return false
+	end
+
+	local wok, werr = pcall(writefile, configPath(name), json)
+	if not wok then
+		warn("[MobileUILib] SaveConfig: writefile failed — " .. tostring(werr))
+		return false
+	end
+	return true
+end
+
+-- Library:LoadConfig(name?, window?) — reads back a config saved with
+-- SaveConfig. `window` is optional but needed to restore the theme (theme
+-- switching is a Window method, not a Library one); flags restore either
+-- way. See the ordering note above the Config System header.
+function Library:LoadConfig(name, window)
+	if not (isfile and readfile) then
+		warn("[MobileUILib] LoadConfig: this executor doesn't expose isfile/readfile")
+		return false
+	end
+
+	local path = configPath(name)
+	local existsOk, exists = pcall(isfile, path)
+	if not existsOk or not exists then
+		return false -- not an error — just nothing saved under this name yet
+	end
+
+	local readOk, raw = pcall(readfile, path)
+	if not readOk then
+		warn("[MobileUILib] LoadConfig: readfile failed — " .. tostring(raw))
+		return false
+	end
+
+	local decodeOk, data = pcall(function() return HttpService:JSONDecode(raw) end)
+	if not decodeOk or type(data) ~= "table" then
+		warn("[MobileUILib] LoadConfig: malformed config file, ignoring — " .. tostring(data))
+		return false
+	end
+
+	if data.Theme and window then
+		pcall(function() window:SetTheme(data.Theme) end)
+	end
+
+	if type(data.Flags) == "table" then
+		for flagName, rawValue in pairs(data.Flags) do
+			local value = deserializeFlagValue(rawValue)
+			local elem = Library.FlagElements[flagName]
+			if elem and elem.Set then
+				pcall(function() elem:Set(value) end)
+			else
+				-- No live element for this flag (e.g. it was set purely via
+				-- ctx:SetFlag by a plugin) — still restore the raw value.
+				Library:SetFlag(flagName, value)
+			end
+		end
+	end
+
+	return true
+end
+
+-- Library:ListConfigs() — best-effort list of saved config names (without
+-- the CornUi_Config_ prefix / .json suffix). Depends on the executor
+-- exposing listfiles with root-directory support, which isn't universal —
+-- returns an empty table rather than erroring if it's unavailable.
+function Library:ListConfigs()
+	if not listfiles then return {} end
+	local ok, files = pcall(listfiles, "")
+	if not ok or type(files) ~= "table" then return {} end
+
+	local names = {}
+	for _, path in ipairs(files) do
+		local fileName = path:match("[^/\\]+$") or path
+		local name = fileName:match("^" .. CONFIG_PREFIX .. "(.+)" .. CONFIG_SUFFIX .. "$")
+		if name then table.insert(names, name) end
+	end
+	return names
+end
+
+-- Library:DeleteConfig(name?) — removes a saved config file. Returns true/false.
+function Library:DeleteConfig(name)
+	if not (delfile and isfile) then
+		warn("[MobileUILib] DeleteConfig: this executor doesn't expose delfile/isfile")
+		return false
+	end
+	local path = configPath(name)
+	local existsOk, exists = pcall(isfile, path)
+	if not existsOk or not exists then return false end
+	local ok, err = pcall(delfile, path)
+	if not ok then
+		warn("[MobileUILib] DeleteConfig: delfile failed — " .. tostring(err))
+		return false
+	end
+	return true
 end
 
 -- ===================== THEME =====================
@@ -285,6 +471,7 @@ function Library:CreateWindow(config)
 	-- Apply theme preset (defaults to Dark) before building anything
 	local preset = Themes[config.Theme] or Themes.Dark
 	for k, v in pairs(preset) do Theme[k] = v end
+	Library._currentThemeName = Themes[config.Theme] and config.Theme or "Dark"
 
 	-- Remove any previous instance of this UI
 	local existing = PlayerGui:FindFirstChild("MobileUILib")
@@ -981,6 +1168,11 @@ function WM:SetTheme(name)
 	local newPreset = Themes[name]
 	if not newPreset then return end
 
+	-- Every theme switch (light/dark toggle, plugins, Config:Load) goes
+	-- through here, so this is the one place that needs to remember the
+	-- active preset name for the Config System to save/restore later.
+	Library._currentThemeName = name
+
 	local reverseMap = {}
 	for k, v in pairs(Theme) do reverseMap[tostring(v)] = k end
 
@@ -1494,10 +1686,19 @@ function TM:CreateToggle(config)
 		if not ok then warn("[MobileUILib] Toggle callback error: " .. tostring(err)) end
 	end)
 
-	return { Set = function(_, value)
+	local handle = { Set = function(_, value)
+		-- Was previously only updating `state` + the flag with no visual
+		-- change — a saved/loaded Toggle value would be correct in
+		-- Library.Flags but the switch itself would look untouched.
 		state = value
+		switchBg.BackgroundColor3 = state and Theme.Accent or Color3.fromRGB(60, 60, 68)
+		knob.Position = state
+			and UDim2.new(1, -((touch and 22 or 16) + 3), 0.5, 0)
+			or UDim2.new(0, 3, 0.5, 0)
 		if config.Flag then Library:SetFlag(config.Flag, state) end
 	end, Get = function() return state end }
+	if config.Flag then Library.FlagElements[config.Flag] = handle end
+	return handle
 end
 
 function TM:CreateSlider(config)
@@ -1588,12 +1789,14 @@ function TM:CreateSlider(config)
 		end
 	end)
 
-	return { Set = function(_, value)
+	local handle = { Set = function(_, value)
 		local relative = math.clamp((value - min) / (max - min), 0, 1)
 		fill.Size = UDim2.new(relative, 0, 1, 0)
 		label.Text = (config.Name or "Slider") .. ": " .. tostring(value)
 		if config.Flag then Library:SetFlag(config.Flag, value) end
-	end }
+	end, Get = function() return config.Flag and Library:GetFlag(config.Flag) or nil end }
+	if config.Flag then Library.FlagElements[config.Flag] = handle end
+	return handle
 end
 
 function TM:CreateTextbox(config)
@@ -1642,10 +1845,12 @@ function TM:CreateTextbox(config)
 		if not ok then warn("[MobileUILib] Textbox callback error: " .. tostring(err)) end
 	end)
 
-	return { Set = function(_, value)
+	local handle = { Set = function(_, value)
 		box.Text = value
 		if config.Flag then Library:SetFlag(config.Flag, value) end
 	end, Get = function() return box.Text end }
+	if config.Flag then Library.FlagElements[config.Flag] = handle end
+	return handle
 end
 
 -- Alias so the API is consistent regardless of casing preference —
@@ -1712,7 +1917,7 @@ function TM:CreateKeybind(config)
 		end)
 	end)
 
-	return {
+	local handle = {
 		Set = function(_, keyCode)
 			currentKey = keyCode
 			keyBtn.Text = keyCode.Name
@@ -1720,6 +1925,8 @@ function TM:CreateKeybind(config)
 		end,
 		Get = function() return currentKey end,
 	}
+	if config.Flag then Library.FlagElements[config.Flag] = handle end
+	return handle
 end
 
 function TM:CreateColorPicker(config)
@@ -1890,7 +2097,7 @@ function TM:CreateColorPicker(config)
 		tween(holder, { Size = UDim2.new(1, 0, 0, open and (closedH + panelHeight + 8) or closedH) }, 0.2)
 	end)
 
-	return {
+	local handle = {
 		Set = function(_, newColor)
 			hue, sat, val = newColor:ToHSV()
 			color = newColor
@@ -1901,6 +2108,8 @@ function TM:CreateColorPicker(config)
 		end,
 		Get = function() return color end,
 	}
+	if config.Flag then Library.FlagElements[config.Flag] = handle end
+	return handle
 end
 
 -- Tab:CreateThemeEditor() — exposes two color pickers wired to
@@ -2024,11 +2233,13 @@ function TM:CreateDropdown(config)
 		tween(holder, { Size = UDim2.new(1, 0, 0, open and (closedH + panelHeight) or closedH) }, 0.15)
 	end)
 
-	return { Set = function(_, value)
+	local handle = { Set = function(_, value)
 		selected = value
 		mainBtn.Text = (config.Name or "Dropdown") .. ": " .. tostring(selected)
 		if config.Flag then Library:SetFlag(config.Flag, selected) end
 	end }
+	if config.Flag then Library.FlagElements[config.Flag] = handle end
+	return handle
 end
 
 -- Tab:CreateSearch() — filters this tab/section's own elements by name as you type.
@@ -2255,6 +2466,11 @@ function Library:_makePluginContext(window)
 		GetFlag = function(_, name) return self_:GetFlag(name) end,
 		SetFlag = function(_, name, value) self_:SetFlag(name, value) end,
 		FlagChanged = self_.FlagChanged,
+
+		SaveConfig = function(_, name) return self_:SaveConfig(name) end,
+		LoadConfig = function(_, name) return self_:LoadConfig(name, window) end,
+		ListConfigs = function(_) return self_:ListConfigs() end,
+		DeleteConfig = function(_, name) return self_:DeleteConfig(name) end,
 
 		RegisterTheme = function(_, name, themeTable)
 			self_:RegisterTheme(name, themeTable)
