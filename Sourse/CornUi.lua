@@ -2410,6 +2410,318 @@ function TM:CreateDiscordButton(config)
 	return btn
 end
 
+-- ===================== BASIC ELEMENTS =====================
+-- Lighter-weight, mostly-static elements for laying out and grouping
+-- content rather than taking input. Same conventions as everything else
+-- above: create()/corner()/stroke() helpers, Theme table, touch-aware
+-- sizing, setSearchMeta for Tab:CreateSearch integration.
+
+-- Tab:CreateDivider(config?) — a plain 1px separator line, or a labeled
+-- one (small caption above the line) if config.Name is given.
+function TM:CreateDivider(config)
+	config = config or {}
+	local touch = self._touch
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, config.Name and (touch and 24 or 20) or (touch and 10 or 8)),
+		BackgroundTransparency = 1,
+	})
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Divider")
+
+	if config.Name then
+		create("TextLabel", {
+			Text = config.Name,
+			Font = Enum.Font.GothamBold,
+			TextSize = touch and 12 or 10,
+			TextColor3 = Theme.SubText,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, touch and 16 or 14),
+			TextXAlignment = Enum.TextXAlignment.Left,
+		}).Parent = holder
+	end
+
+	local line = create("Frame", {
+		Size = UDim2.new(1, 0, 0, 1),
+		Position = UDim2.new(0, 0, 1, -1),
+		BackgroundColor3 = Theme.Stroke,
+		BorderSizePixel = 0,
+	})
+	line.Parent = holder
+
+	return holder
+end
+
+-- Tab:CreateCard(config?) — a visually distinct container (optional Title/
+-- Subtitle) that behaves exactly like a Section: the object it returns
+-- supports every Tab/Section method, so you can build normal elements
+-- inside it. Useful for grouping related info/controls with more visual
+-- weight than a plain Section, e.g. "Account" or "Server Info" blocks.
+function TM:CreateCard(config)
+	config = config or {}
+	local touch = self._touch
+
+	local card = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and 40 or 30), -- grows via AutomaticSize
+		BackgroundColor3 = Theme.Element,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, {
+		corner(14),
+		stroke(),
+		create("UIListLayout", {
+			Padding = UDim.new(0, 6),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+		create("UIPadding", {
+			PaddingTop = UDim.new(0, 10),
+			PaddingLeft = UDim.new(0, 10),
+			PaddingRight = UDim.new(0, 10),
+			PaddingBottom = UDim.new(0, 10),
+		}),
+	})
+	card.Parent = self._page
+	setSearchMeta(card, config, "Card")
+
+	if config.Title then
+		create("TextLabel", {
+			Text = config.Title,
+			Font = Enum.Font.GothamBold,
+			TextSize = touch and 16 or 14,
+			TextColor3 = Theme.Text,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, touch and 22 or 18),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			LayoutOrder = 0,
+		}).Parent = card
+	end
+
+	if config.Subtitle then
+		create("TextLabel", {
+			Text = config.Subtitle,
+			Font = Enum.Font.Gotham,
+			TextSize = touch and 13 or 11,
+			TextColor3 = Theme.SubText,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			TextWrapped = true,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			LayoutOrder = 1,
+		}).Parent = card
+	end
+
+	-- Behaves just like a Section: same element methods, nested one level deeper
+	local Card = setmetatable({
+		_page = card,
+		_touch = touch,
+		_window = self._window,
+		_screenGui = self._screenGui,
+	}, { __index = Library.TabMethods })
+
+	return Card
+end
+
+-- Tab:CreateParagraph(config?) — { Title?, Text } multi-line, auto-wrapping
+-- body text. Unlike CreateLabel (single line, fixed height), this element's
+-- height grows with content via AutomaticSize.
+function TM:CreateParagraph(config)
+	config = config or {}
+	local touch = self._touch
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and 40 or 30),
+		BackgroundColor3 = Theme.Element,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, {
+		corner(12),
+		stroke(),
+		create("UIListLayout", {
+			Padding = UDim.new(0, 4),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+		create("UIPadding", {
+			PaddingTop = UDim.new(0, 10),
+			PaddingLeft = UDim.new(0, 12),
+			PaddingRight = UDim.new(0, 12),
+			PaddingBottom = UDim.new(0, 10),
+		}),
+	})
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Paragraph")
+
+	if config.Title then
+		create("TextLabel", {
+			Text = config.Title,
+			Font = Enum.Font.GothamBold,
+			TextSize = touch and 15 or 13,
+			TextColor3 = Theme.Text,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, touch and 20 or 16),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			LayoutOrder = 0,
+		}).Parent = holder
+	end
+
+	local body = create("TextLabel", {
+		Text = config.Text or config.Content or "",
+		Font = Enum.Font.Gotham,
+		TextSize = touch and 14 or 12,
+		TextColor3 = Theme.SubText,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		LayoutOrder = 1,
+	})
+	body.Parent = holder
+
+	return {
+		Set = function(_, text) body.Text = text end,
+		Get = function() return body.Text end,
+	}
+end
+
+-- Tab:CreateImage(config?) — { Image | AssetId, Name?, Height?, ScaleType? }.
+-- `Image`/`AssetId` accepts a raw numeric id, a bare id string, or a full
+-- "rbxassetid://..." string. Optional Name renders as a caption bar along
+-- the bottom edge, like a thumbnail card.
+function TM:CreateImage(config)
+	config = config or {}
+	local touch = self._touch
+
+	local function normalizeAsset(id)
+		if type(id) == "number" then return "rbxassetid://" .. tostring(id) end
+		if type(id) == "string" and id ~= "" and not id:match("^rbxassetid://") and not id:match("^https?://") then
+			return "rbxassetid://" .. id
+		end
+		return id
+	end
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, config.Height or (touch and 160 or 140)),
+		BackgroundColor3 = Theme.Element,
+		ClipsDescendants = true,
+	}, { corner(12), stroke() })
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Image")
+
+	local img = create("ImageLabel", {
+		Image = normalizeAsset(config.Image or config.AssetId or config.Id) or "",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 1, 0),
+		ScaleType = config.ScaleType or Enum.ScaleType.Crop,
+	})
+	img.Parent = holder
+	-- Decorative content — SetTheme's reverse color-lookup shouldn't try to
+	-- retint an arbitrary picture (same MUI_NoTheme convention used to fix
+	-- the floating-button icon disappearing on theme switch).
+	img:SetAttribute("MUI_NoTheme", true)
+
+	if config.Name then
+		create("TextLabel", {
+			Text = config.Name,
+			Font = Enum.Font.GothamMedium,
+			TextSize = touch and 13 or 11,
+			TextColor3 = Color3.fromRGB(255, 255, 255),
+			BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+			BackgroundTransparency = 0.35,
+			Size = UDim2.new(1, 0, 0, touch and 26 or 22),
+			Position = UDim2.new(0, 0, 1, touch and -26 or -22),
+			TextXAlignment = Enum.TextXAlignment.Left,
+		}, {
+			create("UIPadding", { PaddingLeft = UDim.new(0, 8) }),
+		}).Parent = holder
+	end
+
+	return {
+		Set = function(_, newAsset) img.Image = normalizeAsset(newAsset) or "" end,
+		Get = function() return img.Image end,
+	}
+end
+
+-- Tab:CreateProgressBar(config?) — { Name?, Min?, Max?, Default?, Flag? }.
+-- Animated fill (tweened, and automatically instant under ReducedMotion
+-- since it goes through the shared tween() helper) plus a live percentage
+-- readout.
+function TM:CreateProgressBar(config)
+	config = config or {}
+	local touch = self._touch
+	local min = config.Min or 0
+	local max = config.Max or 100
+	local value = math.clamp(config.Default or min, min, max)
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and 48 or 38),
+		BackgroundColor3 = Theme.Element,
+	}, { corner(12), stroke() })
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Progress Bar")
+
+	create("TextLabel", {
+		Text = config.Name or "Progress",
+		Font = Enum.Font.GothamMedium,
+		TextSize = touch and 14 or 12,
+		TextColor3 = Theme.Text,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(0.6, 0, 0, touch and 18 or 14),
+		Position = UDim2.new(0, 10, 0, 6),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}).Parent = holder
+
+	local percentLabel = create("TextLabel", {
+		Text = "",
+		Font = Enum.Font.GothamBold,
+		TextSize = touch and 13 or 11,
+		TextColor3 = Theme.SubText,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(0.35, -10, 0, touch and 18 or 14),
+		Position = UDim2.new(0.65, 0, 0, 6),
+		TextXAlignment = Enum.TextXAlignment.Right,
+	})
+	percentLabel.Parent = holder
+
+	local track = create("Frame", {
+		Size = UDim2.new(1, -20, 0, touch and 10 or 8),
+		Position = UDim2.new(0, 10, 1, touch and -16 or -14),
+		BackgroundColor3 = Color3.fromRGB(55, 55, 62),
+	}, { corner(8) })
+	track.Parent = holder
+
+	local fill = create("Frame", {
+		Size = UDim2.new(0, 0, 1, 0),
+		BackgroundColor3 = Theme.Accent,
+	}, { corner(8) })
+	fill.Parent = track
+
+	local function render(v, animate)
+		v = math.clamp(v, min, max)
+		local relative = (max > min) and ((v - min) / (max - min)) or 0
+		percentLabel.Text = math.floor(relative * 100 + 0.5) .. "%"
+		if animate then
+			tween(fill, { Size = UDim2.new(relative, 0, 1, 0) }, 0.25)
+		else
+			fill.Size = UDim2.new(relative, 0, 1, 0)
+		end
+		return v
+	end
+	value = render(value, false)
+
+	local handle = {
+		Set = function(_, v)
+			value = render(v, true)
+			if config.Flag then Library:SetFlag(config.Flag, value) end
+		end,
+		Get = function() return value end,
+	}
+	if config.Flag then
+		Library:SetFlag(config.Flag, value)
+		Library.FlagElements[config.Flag] = handle
+	end
+	return handle
+end
+
 -- ===================== PLUGIN SYSTEM =====================
 -- Plugins are separate Lua files hosted externally (GitHub raw, Pastefy,
 -- etc.) that extend the hub without touching this file. Load them with:
