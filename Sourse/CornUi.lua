@@ -48,6 +48,25 @@ end
 -- each element-creation function; not meant to be written to directly.
 Library.FlagElements = {}
 
+-- ===================== KEYBIND REGISTRY =====================
+-- Every Tab:CreateKeybind() registers a { Name, Get } descriptor here so
+-- Tab:CreateKeybindList() can display "what's bound to what" without
+-- needing references to the individual Keybind elements themselves.
+Library.Keybinds = {}
+local keybindRegisteredEvent = Instance.new("BindableEvent")
+Library.KeybindRegistered = keybindRegisteredEvent.Event -- fires (descriptor) when a new Keybind is created
+local keybindChangedEvent = Instance.new("BindableEvent")
+Library.KeybindChanged = keybindChangedEvent.Event -- fires (descriptor) when an existing Keybind's key changes
+
+-- ===================== NOTIFICATION HISTORY =====================
+-- WM:Notify (below) pushes every notification it shows into this capped
+-- history so Tab:CreateNotificationCenter() can display past notifications,
+-- not just the toasts that are currently fading in/out on screen.
+Library.NotificationHistory = {}
+Library.MAX_NOTIFICATION_HISTORY = 50
+local notificationLoggedEvent = Instance.new("BindableEvent")
+Library.NotificationLogged = notificationLoggedEvent.Event -- fires (entry) whenever Notify logs one
+
 -- ===================== CONFIG SYSTEM =====================
 -- Persists Library.Flags (+ the active theme name) to a JSON file on disk,
 -- and restores them on load. Two things make this more than a plain
@@ -93,6 +112,15 @@ local function serializeFlagValue(value)
 		return { __type = "Enum", enum = enumName, name = value.Name }
 	elseif kind == "number" or kind == "string" or kind == "boolean" then
 		return value
+	elseif kind == "table" then
+		-- Generic array support (e.g. CreateColorGradient's list of Color3
+		-- stops) — recurse per element instead of falling through to
+		-- tostring(), which would silently lose the data.
+		local out = {}
+		for i, v in ipairs(value) do
+			out[i] = serializeFlagValue(v)
+		end
+		return { __type = "Array", items = out }
 	else
 		-- Anything else (Vector3, UDim2, nil, ...) isn't currently produced by
 		-- a flag-bearing element, but fall back to a readable string instead
@@ -110,6 +138,12 @@ local function deserializeFlagValue(value)
 		local ok2, item = pcall(function() return enumType[value.name] end)
 		if ok2 then return item end
 		return nil
+	elseif type(value) == "table" and value.__type == "Array" then
+		local out = {}
+		for i, v in ipairs(value.items or {}) do
+			out[i] = deserializeFlagValue(v)
+		end
+		return out
 	else
 		return value
 	end
@@ -1051,6 +1085,23 @@ function WM:Notify(config)
 
 	self._notifCount += 1
 
+	-- Log to the shared history before building the visual toast, so a
+	-- NotificationCenter element (which may live on a different tab, or
+	-- be created after this call) always has the full record.
+	Library._notifSeq = (Library._notifSeq or 0) + 1
+	local historyEntry = {
+		Title = title,
+		Content = content,
+		Type = notifType,
+		Time = os.time(),
+		Seq = Library._notifSeq,
+	}
+	table.insert(Library.NotificationHistory, historyEntry)
+	if #Library.NotificationHistory > Library.MAX_NOTIFICATION_HISTORY then
+		table.remove(Library.NotificationHistory, 1)
+	end
+	Library.NotificationLogged:Fire(historyEntry)
+
 	local notif = create("Frame", {
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
@@ -1865,6 +1916,10 @@ function TM:CreateKeybind(config)
 	local currentKey = config.Default or Enum.KeyCode.Unknown
 	local callback = config.Callback or function() end
 	local listening = false
+	-- Declared before the closures below so they can capture it; populated
+	-- with a real .Get() once `handle` exists, and registered into
+	-- Library.Keybinds at the end of this function.
+	local keybindDescriptor = { Name = config.Name or "Keybind" }
 
 	local holder = create("Frame", {
 		Size = UDim2.new(1, 0, 0, touch and 46 or 34),
@@ -1911,6 +1966,7 @@ function TM:CreateKeybind(config)
 				listening = false
 				conn:Disconnect()
 				if config.Flag then Library:SetFlag(config.Flag, currentKey) end
+				Library.KeybindChanged:Fire(keybindDescriptor)
 				local ok, err = pcall(callback, currentKey)
 				if not ok then warn("[MobileUILib] Keybind callback error: " .. tostring(err)) end
 			end
@@ -1922,10 +1978,18 @@ function TM:CreateKeybind(config)
 			currentKey = keyCode
 			keyBtn.Text = keyCode.Name
 			if config.Flag then Library:SetFlag(config.Flag, keyCode) end
+			Library.KeybindChanged:Fire(keybindDescriptor)
 		end,
 		Get = function() return currentKey end,
 	}
 	if config.Flag then Library.FlagElements[config.Flag] = handle end
+
+	-- Register so Tab:CreateKeybindList() can list this binding (and stay in
+	-- sync with it) without needing to know it exists ahead of time.
+	keybindDescriptor.Get = handle.Get
+	table.insert(Library.Keybinds, keybindDescriptor)
+	Library.KeybindRegistered:Fire(keybindDescriptor)
+
 	return handle
 end
 
@@ -2720,6 +2784,394 @@ function TM:CreateProgressBar(config)
 		Library.FlagElements[config.Flag] = handle
 	end
 	return handle
+end
+
+-- ===================== ADVANCED ELEMENTS =====================
+-- Unlike the basic elements above, these three read/write shared Library
+-- state (Library.Keybinds, Library.NotificationHistory) populated by other
+-- parts of the file, so they behave more like live dashboards than
+-- standalone inputs.
+
+-- Tab:CreateKeybindList(config?) — displays every keybind registered via
+-- Tab:CreateKeybind() across the whole hub (any tab, any plugin), and stays
+-- live-updated as bindings are added or rebound.
+function TM:CreateKeybindList(config)
+	config = config or {}
+	local touch = self._touch
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and 40 or 30),
+		BackgroundColor3 = Theme.Element,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, {
+		corner(12),
+		stroke(),
+		create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
+		create("UIPadding", {
+			PaddingTop = UDim.new(0, 10), PaddingLeft = UDim.new(0, 10),
+			PaddingRight = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10),
+		}),
+	})
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Keybind List")
+
+	create("TextLabel", {
+		Text = config.Name or "Active Keybinds",
+		Font = Enum.Font.GothamBold,
+		TextSize = touch and 14 or 12,
+		TextColor3 = Theme.SubText,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, touch and 18 or 15),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = 0,
+	}).Parent = holder
+
+	local emptyLabel = create("TextLabel", {
+		Text = "No keybinds registered",
+		Font = Enum.Font.Gotham,
+		TextSize = touch and 13 or 11,
+		TextColor3 = Theme.SubText,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, touch and 18 or 15),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = 1,
+	})
+
+	local rowLabels = {} -- descriptor -> its key-value TextLabel, for live updates
+
+	local function keyText(descriptor)
+		local ok, key = pcall(descriptor.Get)
+		if not ok or not key or key == Enum.KeyCode.Unknown then return "Unbound" end
+		return key.Name
+	end
+
+	local function addRow(descriptor)
+		if emptyLabel.Parent then emptyLabel.Parent = nil end
+
+		local row = create("Frame", {
+			Size = UDim2.new(1, 0, 0, touch and 22 or 18),
+			BackgroundTransparency = 1,
+		})
+		row.Parent = holder
+
+		create("TextLabel", {
+			Text = descriptor.Name,
+			Font = Enum.Font.Gotham,
+			TextSize = touch and 13 or 11,
+			TextColor3 = Theme.Text,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(0.6, 0, 1, 0),
+			TextXAlignment = Enum.TextXAlignment.Left,
+		}).Parent = row
+
+		local keyLabel = create("TextLabel", {
+			Text = keyText(descriptor),
+			Font = Enum.Font.GothamBold,
+			TextSize = touch and 13 or 11,
+			TextColor3 = Theme.Accent,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(0.4, 0, 1, 0),
+			TextXAlignment = Enum.TextXAlignment.Right,
+		})
+		keyLabel.Parent = row
+
+		rowLabels[descriptor] = keyLabel
+	end
+
+	for _, descriptor in ipairs(Library.Keybinds) do
+		addRow(descriptor)
+	end
+	if #Library.Keybinds == 0 then
+		emptyLabel.Parent = holder
+	end
+
+	local registeredConn = Library.KeybindRegistered:Connect(addRow)
+	local changedConn = Library.KeybindChanged:Connect(function(descriptor)
+		local keyLabel = rowLabels[descriptor]
+		if keyLabel then keyLabel.Text = keyText(descriptor) end
+	end)
+
+	-- Stop listening once this list is torn down (tab destroyed, hub closed).
+	holder.AncestryChanged:Connect(function(_, parent)
+		if not parent then
+			if registeredConn then registeredConn:Disconnect() end
+			if changedConn then changedConn:Disconnect() end
+		end
+	end)
+
+	return holder
+end
+
+-- Tab:CreateColorGradient(config?) — { Name?, Stops = {Color3, Color3, ...},
+-- Flag?, Callback? }. Renders a live gradient preview plus one
+-- Tab:CreateColorPicker per stop (reusing that element wholesale rather
+-- than re-implementing an HSV wheel), nested inside its own holder so
+-- pickers stack visually within the gradient card instead of spilling
+-- onto the parent tab/section.
+function TM:CreateColorGradient(config)
+	config = config or {}
+	local touch = self._touch
+
+	local stops = config.Stops or { Color3.fromRGB(255, 196, 48), Color3.fromRGB(255, 90, 90) }
+	if #stops < 2 then
+		stops = { stops[1] or Color3.fromRGB(255, 255, 255), Color3.fromRGB(0, 0, 0) }
+	end
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and 40 or 30),
+		BackgroundColor3 = Theme.Element,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, {
+		corner(12),
+		stroke(),
+		create("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }),
+		create("UIPadding", {
+			PaddingTop = UDim.new(0, 10), PaddingLeft = UDim.new(0, 10),
+			PaddingRight = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10),
+		}),
+	})
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Color Gradient")
+
+	create("TextLabel", {
+		Text = config.Name or "Gradient",
+		Font = Enum.Font.GothamBold,
+		TextSize = touch and 15 or 13,
+		TextColor3 = Theme.Text,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, touch and 20 or 16),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = 0,
+	}).Parent = holder
+
+	local preview = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and 32 or 26),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		LayoutOrder = 1,
+	}, { corner(8), stroke() })
+	preview.Parent = holder
+
+	local function buildSequence(colors)
+		if #colors < 2 then return ColorSequence.new(colors[1] or Color3.new(1, 1, 1)) end
+		local keypoints = {}
+		for i, c in ipairs(colors) do
+			table.insert(keypoints, ColorSequenceKeypoint.new((i - 1) / (#colors - 1), c))
+		end
+		return ColorSequence.new(keypoints)
+	end
+
+	local previewGradient = create("UIGradient", { Color = buildSequence(stops) })
+	previewGradient.Parent = preview
+
+	-- Nested page so each stop's ColorPicker parents inside `holder` (this
+	-- gradient's own frame) instead of self._page (the tab/section's).
+	local GradientPage = setmetatable({
+		_page = holder,
+		_touch = touch,
+		_window = self._window,
+		_screenGui = self._screenGui,
+	}, { __index = Library.TabMethods })
+
+	local pickers = {}
+
+	local function currentColors()
+		local colors = {}
+		for _, picker in ipairs(pickers) do table.insert(colors, picker:Get()) end
+		return colors
+	end
+
+	for i, startColor in ipairs(stops) do
+		local picker = GradientPage:CreateColorPicker({
+			Name = "Stop " .. i,
+			Default = startColor,
+			Callback = function()
+				local colors = currentColors()
+				previewGradient.Color = buildSequence(colors)
+				if config.Flag then Library:SetFlag(config.Flag, colors) end
+				if config.Callback then
+					local ok, err = pcall(config.Callback, buildSequence(colors), colors)
+					if not ok then warn("[MobileUILib] ColorGradient callback error: " .. tostring(err)) end
+				end
+			end,
+		})
+		table.insert(pickers, picker)
+	end
+
+	local handle = {
+		Set = function(_, newStops)
+			for i, picker in ipairs(pickers) do
+				if newStops[i] then picker:Set(newStops[i]) end
+			end
+			local colors = currentColors()
+			previewGradient.Color = buildSequence(colors)
+			if config.Flag then Library:SetFlag(config.Flag, colors) end
+		end,
+		Get = function() return currentColors() end,
+		GetSequence = function() return buildSequence(currentColors()) end,
+	}
+	if config.Flag then
+		Library:SetFlag(config.Flag, currentColors())
+		Library.FlagElements[config.Flag] = handle
+	end
+	return handle
+end
+
+-- Tab:CreateNotificationCenter(config?) — { Name? }. Lists every
+-- notification logged via Window:Notify / ctx:Notify (newest first, capped
+-- at Library.MAX_NOTIFICATION_HISTORY), with a Clear button. Updates live
+-- as new notifications come in, even ones fired from a different tab.
+function TM:CreateNotificationCenter(config)
+	config = config or {}
+	local touch = self._touch
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and 46 or 34),
+		BackgroundColor3 = Theme.Element,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, { corner(12), stroke() })
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Notification Center")
+
+	local headerRow = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and 34 or 28),
+		BackgroundTransparency = 1,
+	})
+	headerRow.Parent = holder
+
+	create("TextLabel", {
+		Text = config.Name or "Notifications",
+		Font = Enum.Font.GothamBold,
+		TextSize = touch and 14 or 12,
+		TextColor3 = Theme.Text,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, -70, 1, 0),
+		Position = UDim2.new(0, 10, 0, 0),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}).Parent = headerRow
+
+	local clearBtn = create("TextButton", {
+		Text = "Clear",
+		Font = Enum.Font.GothamMedium,
+		TextSize = touch and 12 or 11,
+		TextColor3 = Theme.SubText,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(0, 56, 1, 0),
+		Position = UDim2.new(1, -60, 0, 0),
+	})
+	clearBtn.Parent = headerRow
+
+	local list = create("Frame", {
+		Size = UDim2.new(1, -16, 0, 0),
+		Position = UDim2.new(0, 8, 0, touch and 36 or 30),
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, {
+		create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
+		create("UIPadding", { PaddingBottom = UDim.new(0, 8) }),
+	})
+	list.Parent = holder
+
+	local typeColors = {
+		success = Color3.fromRGB(70, 200, 110),
+		error = Color3.fromRGB(230, 75, 75),
+		warning = Color3.fromRGB(255, 175, 45),
+		info = Theme.Accent,
+	}
+
+	local emptyLabel = create("TextLabel", {
+		Text = "No notifications yet",
+		Font = Enum.Font.Gotham,
+		TextSize = touch and 13 or 11,
+		TextColor3 = Theme.SubText,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 24),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	})
+
+	local rowHeight = touch and 54 or 44
+
+	local function addRow(entry)
+		if emptyLabel.Parent then emptyLabel.Parent = nil end
+
+		local row = create("Frame", {
+			Size = UDim2.new(1, 0, 0, rowHeight),
+			BackgroundColor3 = Theme.ElementHover,
+			-- Negative so higher Seq (more recent) sorts first under
+			-- SortOrder.LayoutOrder's ascending order.
+			LayoutOrder = -entry.Seq,
+		}, {
+			corner(8),
+			create("UIPadding", {
+				PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 8),
+				PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6),
+			}),
+		})
+		row.Parent = list
+
+		create("Frame", {
+			Size = UDim2.new(0, 3, 1, 0),
+			Position = UDim2.new(0, -8, 0, 0),
+			BackgroundColor3 = typeColors[entry.Type] or Theme.Stroke,
+			BorderSizePixel = 0,
+		}, { corner(2) }).Parent = row
+
+		create("TextLabel", {
+			Text = entry.Title,
+			Font = Enum.Font.GothamMedium,
+			TextSize = touch and 13 or 11,
+			TextColor3 = Theme.Text,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, -56, 0, touch and 16 or 14),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+		}).Parent = row
+
+		create("TextLabel", {
+			Text = entry.Content,
+			Font = Enum.Font.Gotham,
+			TextSize = touch and 12 or 10,
+			TextColor3 = Theme.SubText,
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0, 0, 0, touch and 18 or 15),
+			Size = UDim2.new(1, 0, 0, touch and 16 or 14),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+		}).Parent = row
+
+		create("TextLabel", {
+			Text = os.date("%H:%M:%S", entry.Time),
+			Font = Enum.Font.Gotham,
+			TextSize = touch and 10 or 9,
+			TextColor3 = Theme.SubText,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(0, 54, 0, 12),
+			Position = UDim2.new(1, -54, 0, 0),
+			TextXAlignment = Enum.TextXAlignment.Right,
+		}).Parent = row
+	end
+
+	for _, entry in ipairs(Library.NotificationHistory) do
+		addRow(entry)
+	end
+	if #Library.NotificationHistory == 0 then
+		emptyLabel.Parent = list
+	end
+
+	local logConn = Library.NotificationLogged:Connect(addRow)
+
+	clearBtn.MouseButton1Click:Connect(function()
+		Library.NotificationHistory = {}
+		for _, child in ipairs(list:GetChildren()) do
+			if child:IsA("Frame") then child:Destroy() end
+		end
+		emptyLabel.Parent = list
+	end)
+
+	holder.AncestryChanged:Connect(function(_, parent)
+		if not parent and logConn then logConn:Disconnect() end
+	end)
+
+	return holder
 end
 
 -- ===================== PLUGIN SYSTEM =====================
