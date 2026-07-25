@@ -53,14 +53,19 @@ return {
 
 		local blurEffect = Lighting:FindFirstChild("MUI_PerfBlur")
 		if not blurEffect then
-			blurEffect = Instance.new("BlurEffect")
-			blurEffect.Name = "MUI_PerfBlur"
-			blurEffect.Size = 0
-			blurEffect.Parent = Lighting
+			local ok, created = pcall(function()
+				local b = Instance.new("BlurEffect")
+				b.Name = "MUI_PerfBlur"
+				b.Size = 0
+				b.Parent = Lighting
+				return b
+			end)
+			if ok then blurEffect = created end
 		end
 
 		local function setBlur(on)
-			blurEffect.Size = on and 24 or 0
+			if not blurEffect or not blurEffect.Parent then return end
+			pcall(function() blurEffect.Size = on and 24 or 0 end)
 		end
 
 		----------------------------------------------------------------
@@ -70,17 +75,24 @@ return {
 		local particleConn
 
 		local function setParticleEmitter(inst, enabled)
-			if inst:IsA("ParticleEmitter") or inst:IsA("Trail") then
-				inst.Enabled = enabled
-			end
+			-- Instances can be destroyed/streamed-out between GetDescendants()
+			-- collecting them and this callback touching them, so guard each one.
+			pcall(function()
+				if inst:IsA("ParticleEmitter") or inst:IsA("Trail") then
+					inst.Enabled = enabled
+				end
+			end)
 		end
 
 		local function setParticles(on)
 			-- "on" here means particles ENABLED (normal); disabling them is
 			-- what the performance toggle actually does — kept as `on` for
 			-- symmetry with the other setters, called with `not disabled`.
-			for _, inst in ipairs(Workspace:GetDescendants()) do
-				setParticleEmitter(inst, on)
+			local ok, descendants = pcall(function() return Workspace:GetDescendants() end)
+			if ok then
+				for _, inst in ipairs(descendants) do
+					setParticleEmitter(inst, on)
+				end
 			end
 
 			if particleConn then particleConn:Disconnect(); particleConn = nil end

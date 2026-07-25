@@ -17,6 +17,10 @@
 	- Fly reads Humanoid.MoveDirection (works with WASD, mobile thumbstick,
 	  and gamepad alike) and steers a BodyVelocity off the camera's look
 	  vector, so it needs no per-platform input branching.
+	- Respawn/teardown timing (character dying mid-fly, noclip parts
+	  streaming out, camera swapping) is the main source of runtime errors
+	  here, so those paths are pcall-wrapped rather than left to error out
+	  and silently kill a RunService connection.
 ]]
 
 local RunService = game:GetService("RunService")
@@ -58,7 +62,8 @@ return {
 
 		-- Re-apply after every respawn, since a fresh Humanoid resets to default.
 		player.CharacterAdded:Connect(function(char)
-			local hum = char:WaitForChild("Humanoid")
+			local ok, hum = pcall(function() return char:WaitForChild("Humanoid", 5) end)
+			if not ok or not hum then return end
 			local speed = ctx:GetFlag("Speed")
 			if speed then hum.WalkSpeed = speed end
 		end)
@@ -71,9 +76,14 @@ return {
 
 		local function stopFly()
 			if flyConn then flyConn:Disconnect(); flyConn = nil end
-			if flyForce then flyForce:Destroy(); flyForce = nil end
+			if flyForce then
+				pcall(function() flyForce:Destroy() end)
+				flyForce = nil
+			end
 			local hum = getHumanoid()
-			if hum then hum.PlatformStand = false end
+			if hum then
+				pcall(function() hum.PlatformStand = false end)
+			end
 		end
 
 		local function startFly()
@@ -81,27 +91,44 @@ return {
 			local hum, root = getHumanoid(), getRoot()
 			if not hum or not root then return end
 
-			hum.PlatformStand = true
-			flyForce = Instance.new("BodyVelocity")
-			flyForce.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-			flyForce.Velocity = Vector3.zero
-			flyForce.Parent = root
+			local ok = pcall(function()
+				hum.PlatformStand = true
+				flyForce = Instance.new("BodyVelocity")
+				flyForce.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+				flyForce.Velocity = Vector3.zero
+				flyForce.Parent = root
+			end)
+			if not ok then
+				-- Root/Humanoid got yanked out from under us (respawn race) —
+				-- bail out cleanly instead of leaving a half-built fly state.
+				stopFly()
+				return
+			end
 
 			flyConn = RunService.RenderStepped:Connect(function()
-				if not flyForce or not flyForce.Parent then return end
-				local speed = ctx:GetFlag("FlySpeed") or 50
-				local moveDir = hum.MoveDirection -- magnitude 0..1, already input-relative
-				if moveDir.Magnitude > 0.05 then
-					-- Re-project onto the camera's facing so "forward" always
-					-- means "where you're looking", flattened Y from moveDir's own Y.
-					local look = camera.CFrame.LookVector
-					local flatLook = Vector3.new(look.X, 0, look.Z)
-					if flatLook.Magnitude > 0.001 then flatLook = flatLook.Unit end
-					local right = camera.CFrame.RightVector
-					local forwardAmt = moveDir:Dot(Vector3.new(flatLook.X, 0, flatLook.Z))
-					flyForce.Velocity = (flatLook * -moveDir.Z + right * moveDir.X) * speed
-				else
-					flyForce.Velocity = flyForce.Velocity:Lerp(Vector3.zero, 0.2)
+				-- Wrapped: camera can change (CurrentCamera swap), and the
+				-- character can disappear mid-frame on respawn/teleport.
+				local stepOk, stepErr = pcall(function()
+					if not flyForce or not flyForce.Parent then return end
+					local cam = workspace.CurrentCamera
+					if not cam then return end
+					local speed = ctx:GetFlag("FlySpeed") or 50
+					local moveDir = hum.MoveDirection -- magnitude 0..1, already input-relative
+					if moveDir.Magnitude > 0.05 then
+						-- Re-project onto the camera's facing so "forward" always
+						-- means "where you're looking", flattened Y from moveDir's own Y.
+						local look = cam.CFrame.LookVector
+						local flatLook = Vector3.new(look.X, 0, look.Z)
+						if flatLook.Magnitude > 0.001 then flatLook = flatLook.Unit end
+						local right = cam.CFrame.RightVector
+						flyForce.Velocity = (flatLook * -moveDir.Z + right * moveDir.X) * speed
+					else
+						flyForce.Velocity = flyForce.Velocity:Lerp(Vector3.zero, 0.2)
+					end
+				end)
+				if not stepOk then
+					warn("[MovementSuite] Fly step error, stopping fly: " .. tostring(stepErr))
+					stopFly()
 				end
 			end)
 		end
@@ -116,7 +143,7 @@ return {
 			-- re-enable next frame once the new character has settled.
 			if ctx:GetFlag("Fly") then
 				task.wait(0.5)
-				setFly(true)
+				pcall(setFly, true)
 			end
 		end)
 
@@ -127,9 +154,10 @@ return {
 		local noclipConn
 
 		local function applyNoclip(char, on)
+			if not char then return end
 			for _, part in ipairs(char:GetDescendants()) do
 				if part:IsA("BasePart") then
-					part.CanCollide = not on
+					pcall(function() part.CanCollide = not on end)
 				end
 			end
 		end
@@ -146,7 +174,7 @@ return {
 				-- tools); keep re-applying so nothing suddenly collides again.
 				noclipConn = char.DescendantAdded:Connect(function(inst)
 					if inst:IsA("BasePart") then
-						inst.CanCollide = false
+						pcall(function() inst.CanCollide = false end)
 					end
 				end)
 			else
@@ -168,7 +196,9 @@ return {
 
 		local function resetChar()
 			local hum = getHumanoid()
-			if hum then hum.Health = 0 end
+			if hum then
+				pcall(function() hum.Health = 0 end)
+			end
 		end
 
 		----------------------------------------------------------------

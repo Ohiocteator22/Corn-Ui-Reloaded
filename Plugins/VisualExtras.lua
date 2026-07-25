@@ -19,6 +19,11 @@
 	- ctx.Window is used directly for SetTheme, since that's a Window method
 	  and not part of the small ctx wrapper surface (RegisterTheme is, since
 	  it can be called before a window even exists).
+	- User-facing callbacks (theme swap, background swap, custom asset id)
+	  are pcall-wrapped: a bad/moderated asset id or a mid-teardown SetTheme
+	  call would otherwise error out of the dropdown's Callback and, in some
+	  CornUi element implementations, wedge that control until the tab is
+	  recreated.
 ]]
 
 return {
@@ -30,7 +35,14 @@ return {
 		-- Custom themes
 		----------------------------------------------------------------
 
-		ctx:RegisterTheme("Midnight", {
+		local function safeRegisterTheme(name, def)
+			local ok, err = pcall(function() ctx:RegisterTheme(name, def) end)
+			if not ok then
+				warn("[VisualExtras] Failed to register theme '" .. name .. "': " .. tostring(err))
+			end
+		end
+
+		safeRegisterTheme("Midnight", {
 			Background = Color3.fromRGB(8, 10, 18),
 			Header = Color3.fromRGB(13, 15, 26),
 			Accent = Color3.fromRGB(90, 140, 255),
@@ -43,7 +55,7 @@ return {
 			ToggleButton = Color3.fromRGB(18, 21, 34),
 		})
 
-		ctx:RegisterTheme("Sunset", {
+		safeRegisterTheme("Sunset", {
 			Background = Color3.fromRGB(20, 12, 14),
 			Header = Color3.fromRGB(28, 17, 19),
 			Accent = Color3.fromRGB(255, 110, 70),
@@ -56,7 +68,7 @@ return {
 			ToggleButton = Color3.fromRGB(34, 21, 23),
 		})
 
-		ctx:RegisterTheme("Forest", {
+		safeRegisterTheme("Forest", {
 			Background = Color3.fromRGB(10, 16, 12),
 			Header = Color3.fromRGB(15, 22, 17),
 			Accent = Color3.fromRGB(110, 200, 120),
@@ -97,7 +109,11 @@ return {
 			Options = THEME_NAMES,
 			Default = "Dark",
 			Callback = function(choice)
-				ctx.Window:SetTheme(choice)
+				local ok, err = pcall(function() ctx.Window:SetTheme(choice) end)
+				if not ok then
+					warn("[VisualExtras] SetTheme('" .. tostring(choice) .. "') failed: " .. tostring(err))
+					ctx:Notify({ Title = "Theme", Content = "Couldn't switch theme", Type = "error" })
+				end
 			end,
 		})
 
@@ -108,11 +124,17 @@ return {
 			Options = BACKGROUND_NAMES,
 			Default = "None",
 			Callback = function(choice)
-				local preset = BACKGROUNDS[choice]
-				if preset then
-					ctx:SetBackground(preset)
-				else
-					ctx:ClearBackground()
+				local ok, err = pcall(function()
+					local preset = BACKGROUNDS[choice]
+					if preset then
+						ctx:SetBackground(preset)
+					else
+						ctx:ClearBackground()
+					end
+				end)
+				if not ok then
+					warn("[VisualExtras] Background preset '" .. tostring(choice) .. "' failed: " .. tostring(err))
+					ctx:Notify({ Title = "Background", Content = "Couldn't set background", Type = "error" })
 				end
 			end,
 		})
@@ -123,14 +145,21 @@ return {
 			Callback = function(text)
 				text = text:gsub("^%s+", ""):gsub("%s+$", "")
 				if text == "" then return end
-				ctx:SetBackground(text)
+				-- Free-text asset ids are the likeliest thing here to be
+				-- malformed, moderated, or otherwise rejected — never let
+				-- that take the textbox's Callback down with it.
+				local ok, err = pcall(function() ctx:SetBackground(text) end)
+				if not ok then
+					warn("[VisualExtras] Custom background '" .. text .. "' failed: " .. tostring(err))
+					ctx:Notify({ Title = "Background", Content = "That asset id didn't work", Type = "error" })
+				end
 			end,
 		})
 
 		bgSection:CreateButton({
 			Name = "Clear Background",
 			Callback = function()
-				ctx:ClearBackground()
+				pcall(function() ctx:ClearBackground() end)
 			end,
 		})
 	end,
