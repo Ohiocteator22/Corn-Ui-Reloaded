@@ -59,7 +59,7 @@ Corn:RegisterTheme("Sunset", {
 })
 ```
 --------------------------------------------------
-🔌 Plugin System
+# 🔌 Plugin System
 
 CornUi supports external plugins.
 
