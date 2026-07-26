@@ -59,5 +59,28 @@ Corn:RegisterTheme("Sunset", {
 })
 ```
 --------------------------------------------------
+🔌 Plugin System
+
+CornUi supports external plugins.
+
+Plugins can extend the library without modifying the core source.
+
+Example:
+```lua 
+    Corn:LoadPlugin(
+    "https://example.com/MyPlugin.lua",
+    Window
+    )
+```
+multiple Plugins-
+```lua
+    Corn:LoadPlugins({
+        "Plugin1.lua",
+        "Plugin2.lua"
+    }, Window)
+```
+
+
+-------------------------------------------------
 
 + to use the loader, use loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/refs/heads/main/Loader/Corn%20Ui%20loader.lua"))()
