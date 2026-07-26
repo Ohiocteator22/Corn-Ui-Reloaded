@@ -57,6 +57,8 @@ local keybindRegisteredEvent = Instance.new("BindableEvent")
 Library.KeybindRegistered = keybindRegisteredEvent.Event -- fires (descriptor) when a new Keybind is created
 local keybindChangedEvent = Instance.new("BindableEvent")
 Library.KeybindChanged = keybindChangedEvent.Event -- fires (descriptor) when an existing Keybind's key changes
+local keybindUnregisteredEvent = Instance.new("BindableEvent")
+Library.KeybindUnregistered = keybindUnregisteredEvent.Event -- fires (descriptor) when a Keybind element is :Destroy()'d
 
 -- ===================== NOTIFICATION HISTORY =====================
 -- WM:Notify (below) pushes every notification it shows into this capped
@@ -1569,6 +1571,79 @@ end
 Library.TabMethods = {}
 local TM = Library.TabMethods
 
+-- ===================== ELEMENT MANAGEMENT =====================
+-- Most element-creation functions below funnel their return value through
+-- Library:_wrapElement(root, value) so every element gains the same four
+-- methods, regardless of whether it normally returns a {Set,Get} handle, a
+-- Section/Card-style nested-page object, or (for a few elements) a raw
+-- Instance:
+--   :Destroy()             — removes the element's UI entirely
+--   :SetVisible(bool)       — shows/hides it
+--   :SetDisabled(bool)      — dims it and blocks input via a small overlay,
+--                              with no per-element wiring required
+--   :Refresh()               — for elements with Set/Get, re-applies
+--                              Get() through Set() to force a visual
+--                              resync; KeybindList/NotificationCenter/
+--                              PluginManager override this with their own
+--                              rebuild-from-source logic instead
+--
+-- KNOWN, DELIBERATE EXCEPTION: Tab:CreateLabel() keeps returning the raw
+-- TextLabel Instance, unwrapped. DevSuite.lua (already shipped) depends on
+-- that — it does `fpsLabel.Text = ...` and `fpsLabel.AncestryChanged:Connect(...)`
+-- directly on the return value. Wrapping it would silently break that
+-- plugin. :Destroy() and .Visible already work on it natively (real
+-- Instance methods/properties) either way; :SetDisabled()/:Refresh() are
+-- the only things a label genuinely loses by keeping this shape — and a
+-- static label rarely needs either. CreateThemeEditor is also left
+-- unwrapped: it's a composite of a label + two color pickers with no
+-- single root to hang one overlay/visibility toggle on.
+function Library:_wrapElement(root, value)
+	local handle
+	if type(value) == "table" then
+		handle = value
+	else
+		handle = {}
+	end
+	if handle.Instance == nil then handle.Instance = root end
+
+	handle.Destroy = handle.Destroy or function(_)
+		if root and root.Parent then root:Destroy() end
+	end
+
+	handle.SetVisible = handle.SetVisible or function(_, visible)
+		if root then root.Visible = visible end
+	end
+
+	handle.SetDisabled = handle.SetDisabled or function(_, disabled)
+		if not root then return end
+		local overlay = root:FindFirstChild("MUI_DisabledOverlay")
+		if disabled then
+			if not overlay then
+				overlay = create("Frame", {
+					Name = "MUI_DisabledOverlay",
+					Size = UDim2.new(1, 0, 1, 0),
+					BackgroundColor3 = Theme.Background,
+					BackgroundTransparency = 0.45,
+					ZIndex = 1000,
+					Active = true, -- swallows clicks/touches so nothing underneath is reachable
+				})
+				overlay.Parent = root
+			end
+		elseif overlay then
+			overlay:Destroy()
+		end
+	end
+
+	handle.Refresh = handle.Refresh or function(self_)
+		if self_.Set and self_.Get then
+			local ok, current = pcall(self_.Get, self_)
+			if ok then pcall(self_.Set, self_, current) end
+		end
+	end
+
+	return handle
+end
+
 -- Sections group elements visually inside a tab, like Orion's :AddSection
 function TM:CreateSection(name)
 	local touch = self._touch
@@ -1612,7 +1687,7 @@ function TM:CreateSection(name)
 		_screenGui = self._screenGui,
 	}, { __index = Library.TabMethods })
 
-	return Section
+	return Library:_wrapElement(container, Section)
 end
 
 function TM:CreateLabel(text)
@@ -1670,7 +1745,7 @@ function TM:CreateButton(config)
 		if not ok then warn("[MobileUILib] Button callback error: " .. tostring(err)) end
 	end)
 
-	return btn
+	return Library:_wrapElement(btn)
 end
 
 function TM:CreateToggle(config)
@@ -1749,7 +1824,7 @@ function TM:CreateToggle(config)
 		if config.Flag then Library:SetFlag(config.Flag, state) end
 	end, Get = function() return state end }
 	if config.Flag then Library.FlagElements[config.Flag] = handle end
-	return handle
+	return Library:_wrapElement(holder, handle)
 end
 
 function TM:CreateSlider(config)
@@ -1847,7 +1922,7 @@ function TM:CreateSlider(config)
 		if config.Flag then Library:SetFlag(config.Flag, value) end
 	end, Get = function() return config.Flag and Library:GetFlag(config.Flag) or nil end }
 	if config.Flag then Library.FlagElements[config.Flag] = handle end
-	return handle
+	return Library:_wrapElement(holder, handle)
 end
 
 function TM:CreateTextbox(config)
@@ -1901,7 +1976,7 @@ function TM:CreateTextbox(config)
 		if config.Flag then Library:SetFlag(config.Flag, value) end
 	end, Get = function() return box.Text end }
 	if config.Flag then Library.FlagElements[config.Flag] = handle end
-	return handle
+	return Library:_wrapElement(holder, handle)
 end
 
 -- Alias so the API is consistent regardless of casing preference —
@@ -1981,6 +2056,19 @@ function TM:CreateKeybind(config)
 			Library.KeybindChanged:Fire(keybindDescriptor)
 		end,
 		Get = function() return currentKey end,
+		-- Custom Destroy (checked by _wrapElement before it supplies the
+		-- generic one): a destroyed Keybind shouldn't linger in
+		-- CreateKeybindList forever, so unregister it first.
+		Destroy = function(_)
+			for i, d in ipairs(Library.Keybinds) do
+				if d == keybindDescriptor then
+					table.remove(Library.Keybinds, i)
+					break
+				end
+			end
+			Library.KeybindUnregistered:Fire(keybindDescriptor)
+			if holder and holder.Parent then holder:Destroy() end
+		end,
 	}
 	if config.Flag then Library.FlagElements[config.Flag] = handle end
 
@@ -1990,7 +2078,7 @@ function TM:CreateKeybind(config)
 	table.insert(Library.Keybinds, keybindDescriptor)
 	Library.KeybindRegistered:Fire(keybindDescriptor)
 
-	return handle
+	return Library:_wrapElement(holder, handle)
 end
 
 function TM:CreateColorPicker(config)
@@ -2837,6 +2925,7 @@ function TM:CreateKeybindList(config)
 		LayoutOrder = 1,
 	})
 
+	local rowFrames = {} -- descriptor -> its row Frame, so unregistering can remove exactly one row
 	local rowLabels = {} -- descriptor -> its key-value TextLabel, for live updates
 
 	local function keyText(descriptor)
@@ -2875,31 +2964,45 @@ function TM:CreateKeybindList(config)
 		})
 		keyLabel.Parent = row
 
+		rowFrames[descriptor] = row
 		rowLabels[descriptor] = keyLabel
 	end
 
-	for _, descriptor in ipairs(Library.Keybinds) do
-		addRow(descriptor)
+	local function removeRow(descriptor)
+		local row = rowFrames[descriptor]
+		if row then row:Destroy() end
+		rowFrames[descriptor] = nil
+		rowLabels[descriptor] = nil
+		if next(rowFrames) == nil then
+			emptyLabel.Parent = holder
+		end
 	end
-	if #Library.Keybinds == 0 then
-		emptyLabel.Parent = holder
+
+	local function rebuildAll()
+		for descriptor in pairs(rowFrames) do removeRow(descriptor) end
+		for _, descriptor in ipairs(Library.Keybinds) do addRow(descriptor) end
+		if #Library.Keybinds == 0 then emptyLabel.Parent = holder end
 	end
+
+	rebuildAll()
 
 	local registeredConn = Library.KeybindRegistered:Connect(addRow)
 	local changedConn = Library.KeybindChanged:Connect(function(descriptor)
 		local keyLabel = rowLabels[descriptor]
 		if keyLabel then keyLabel.Text = keyText(descriptor) end
 	end)
+	local unregisteredConn = Library.KeybindUnregistered:Connect(removeRow)
 
 	-- Stop listening once this list is torn down (tab destroyed, hub closed).
 	holder.AncestryChanged:Connect(function(_, parent)
 		if not parent then
 			if registeredConn then registeredConn:Disconnect() end
 			if changedConn then changedConn:Disconnect() end
+			if unregisteredConn then unregisteredConn:Disconnect() end
 		end
 	end)
 
-	return holder
+	return Library:_wrapElement(holder, { Refresh = function(_) rebuildAll() end })
 end
 
 -- Tab:CreateColorGradient(config?) — { Name?, Stops = {Color3, Color3, ...},
@@ -3197,6 +3300,11 @@ end
 --               -- ...
 --           end)
 --       end,
+--       Unload = function(ctx)     -- optional — called on Disable/Reload/Unload
+--           -- disconnect RunService connections, turn off effects this
+--           -- plugin turned on, etc. See the Plugin Manager section below
+--           -- for what Unload can and can't clean up.
+--       end,
 --   }
 --
 -- `ctx` (the "plugin context") is the only thing a plugin should touch — a
@@ -3220,6 +3328,22 @@ end
 
 Library.Plugins = {} -- name (or url, if unnamed) -> the table the plugin returned
 
+-- Richer per-plugin bookkeeping for the Plugin Manager (below), kept
+-- separate from Library.Plugins above so that existing/simple usage
+-- (`Library.Plugins[name]` = the plugin's own returned table) doesn't
+-- change shape. Library.PluginRegistry is an ordered array of records:
+--   { Name, Url, Version, Enabled, Result, Context, Window }
+Library.PluginRegistry = {}
+local pluginRegistryChangedEvent = Instance.new("BindableEvent")
+Library.PluginRegistryChanged = pluginRegistryChangedEvent.Event -- fires () on any load/enable/disable/reload/unload
+
+local function findPluginRecord(name)
+	for _, record in ipairs(Library.PluginRegistry) do
+		if record.Name == name then return record end
+	end
+	return nil
+end
+
 function Library:_makePluginContext(window)
 	local self_ = self
 	return {
@@ -3235,6 +3359,12 @@ function Library:_makePluginContext(window)
 		LoadConfig = function(_, name) return self_:LoadConfig(name, window) end,
 		ListConfigs = function(_) return self_:ListConfigs() end,
 		DeleteConfig = function(_, name) return self_:DeleteConfig(name) end,
+
+		ListPlugins = function(_) return self_:ListPlugins() end,
+		DisablePlugin = function(_, name) return self_:DisablePlugin(name) end,
+		EnablePlugin = function(_, name) return self_:EnablePlugin(name) end,
+		ReloadPlugin = function(_, name) return self_:ReloadPlugin(name) end,
+		UnloadPlugin = function(_, name) return self_:UnloadPlugin(name) end,
 
 		RegisterTheme = function(_, name, themeTable)
 			self_:RegisterTheme(name, themeTable)
@@ -3298,12 +3428,27 @@ function Library:LoadPlugin(url, window)
 	if type(result) == "table" then
 		local name = result.Name or url
 		self.Plugins[name] = result
+
+		local record = findPluginRecord(name)
+		if not record then
+			record = { Name = name }
+			table.insert(self.PluginRegistry, record)
+		end
+		record.Url = url
+		record.Version = result.Version
+		record.Result = result
+		record.Context = context
+		record.Window = window
+		record.Enabled = true
+
 		if type(result.Init) == "function" then
 			local initOk, initErr = pcall(result.Init, context)
 			if not initOk then
 				warn("[MobileUILib] Plugin Init error (" .. tostring(name) .. "): " .. tostring(initErr))
 			end
 		end
+
+		pluginRegistryChangedEvent:Fire()
 	end
 
 	return result
@@ -3319,6 +3464,316 @@ function Library:LoadPlugins(urls, window)
 		loaded[#loaded + 1] = self:LoadPlugin(url, window)
 	end
 	return loaded
+end
+
+-- ===================== PLUGIN MANAGER =====================
+-- Enable/Disable/Reload/Unload built on top of LoadPlugin above. An
+-- HONEST LIMITATION, not swept under the rug: CornUi.lua currently has no
+-- element-teardown API (no Tab:Destroy(), etc. — that's a separate,
+-- not-yet-built roadmap item). That means none of the functions below can
+-- remove UI a plugin already created (tabs, toggles, ...). What they CAN
+-- do reliably:
+--   - stop a plugin's *behavior* going forward, if the plugin cooperates
+--     by implementing an optional `Unload = function(ctx) ... end` in its
+--     returned table (disconnect RunService connections, turn off noclip/
+--     fly, etc.) — same shape as `Init`, called on Disable/Reload/Unload.
+--   - track what's loaded, its version/url, and whether it's "enabled"
+--     for a Plugin Manager UI to display and toggle.
+--   - re-run Init on Enable/Reload, which is safe for plugins that don't
+--     duplicate UI on repeat Init calls, and will visibly duplicate tabs/
+--     elements for plugins that do. This is a real gap, not a bug in the
+--     Manager — write Init idempotently (check ctx.Window for an existing
+--     tab by name before creating a new one) if you plan to reload often.
+
+-- Library:ListPlugins() — snapshot of every loaded plugin for a Plugin
+-- Manager UI: { Name, Version, Url, Enabled }[]
+function Library:ListPlugins()
+	local list = {}
+	for _, record in ipairs(self.PluginRegistry) do
+		table.insert(list, {
+			Name = record.Name,
+			Version = record.Version,
+			Url = record.Url,
+			Enabled = record.Enabled,
+		})
+	end
+	return list
+end
+
+-- Library:DisablePlugin(name) — calls the plugin's Unload(ctx) if it has
+-- one, then marks it disabled. Returns true/false. See the limitation note
+-- above: this does not remove UI the plugin already created.
+function Library:DisablePlugin(name)
+	local record = findPluginRecord(name)
+	if not record or not record.Enabled then return false end
+
+	if record.Result and type(record.Result.Unload) == "function" then
+		local ok, err = pcall(record.Result.Unload, record.Context)
+		if not ok then
+			warn("[MobileUILib] Plugin Unload error (" .. tostring(name) .. "): " .. tostring(err))
+		end
+	end
+
+	record.Enabled = false
+	pluginRegistryChangedEvent:Fire()
+	return true
+end
+
+-- Library:EnablePlugin(name) — re-runs Init(ctx) for a previously-disabled
+-- plugin. See the Init-duplication caveat above.
+function Library:EnablePlugin(name)
+	local record = findPluginRecord(name)
+	if not record or record.Enabled then return false end
+
+	if record.Result and type(record.Result.Init) == "function" then
+		local ok, err = pcall(record.Result.Init, record.Context)
+		if not ok then
+			warn("[MobileUILib] Plugin Init error on re-enable (" .. tostring(name) .. "): " .. tostring(err))
+		end
+	end
+
+	record.Enabled = true
+	pluginRegistryChangedEvent:Fire()
+	return true
+end
+
+-- Library:ReloadPlugin(name) — Unload (if present) + re-fetch the plugin's
+-- source from its original Url + re-run it fresh, replacing the old
+-- Result/Context in place. Only works for plugins loaded via LoadPlugin/
+-- LoadPlugins (i.e. anything with a known Url). Returns true/false.
+function Library:ReloadPlugin(name)
+	local record = findPluginRecord(name)
+	if not record or not record.Url then return false end
+
+	if record.Result and type(record.Result.Unload) == "function" then
+		pcall(record.Result.Unload, record.Context)
+	end
+
+	local fetchOk, source = pcall(game.HttpGet, game, record.Url)
+	if not fetchOk then
+		warn("[MobileUILib] Plugin reload fetch failed (" .. tostring(name) .. "): " .. tostring(source))
+		return false
+	end
+
+	local chunk, compileErr = loadstring(source)
+	if not chunk then
+		warn("[MobileUILib] Plugin reload compile failed (" .. tostring(name) .. "): " .. tostring(compileErr))
+		return false
+	end
+
+	local context = self:_makePluginContext(record.Window)
+	local runOk, result = pcall(chunk, context)
+	if not runOk then
+		warn("[MobileUILib] Plugin reload run error (" .. tostring(name) .. "): " .. tostring(result))
+		return false
+	end
+
+	if type(result) == "table" then
+		self.Plugins[name] = result
+		record.Result = result
+		record.Context = context
+		record.Version = result.Version
+		record.Enabled = true
+
+		if type(result.Init) == "function" then
+			local initOk, initErr = pcall(result.Init, context)
+			if not initOk then
+				warn("[MobileUILib] Plugin Init error on reload (" .. tostring(name) .. "): " .. tostring(initErr))
+			end
+		end
+	end
+
+	pluginRegistryChangedEvent:Fire()
+	return true
+end
+
+-- Library:UnloadPlugin(name) — Unload (if present) + removes it from the
+-- registry and Library.Plugins entirely. Same UI-teardown caveat applies.
+function Library:UnloadPlugin(name)
+	local record = findPluginRecord(name)
+	if not record then return false end
+
+	if record.Result and type(record.Result.Unload) == "function" then
+		local ok, err = pcall(record.Result.Unload, record.Context)
+		if not ok then
+			warn("[MobileUILib] Plugin Unload error (" .. tostring(name) .. "): " .. tostring(err))
+		end
+	end
+
+	self.Plugins[name] = nil
+	for i, r in ipairs(self.PluginRegistry) do
+		if r.Name == name then
+			table.remove(self.PluginRegistry, i)
+			break
+		end
+	end
+
+	pluginRegistryChangedEvent:Fire()
+	return true
+end
+
+-- Tab:CreatePluginManager(config?) — lists every loaded plugin (name,
+-- version, enabled state) with Enable/Disable, Reload, and Unload buttons,
+-- live-updated via Library.PluginRegistryChanged. See the caveat above the
+-- Library:Disable/Enable/Reload/UnloadPlugin functions: none of these
+-- remove UI a plugin already created — there's no element-teardown API
+-- yet. Reload is hidden for any plugin without a known Url (i.e. anything
+-- not loaded through LoadPlugin/LoadPlugins).
+function TM:CreatePluginManager(config)
+	config = config or {}
+	local touch = self._touch
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and 46 or 34),
+		BackgroundColor3 = Theme.Element,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, { corner(12), stroke() })
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Plugin Manager")
+
+	create("TextLabel", {
+		Text = config.Name or "Plugins",
+		Font = Enum.Font.GothamBold,
+		TextSize = touch and 15 or 13,
+		TextColor3 = Theme.Text,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, -20, 0, touch and 30 or 24),
+		Position = UDim2.new(0, 10, 0, 6),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}).Parent = holder
+
+	local list = create("Frame", {
+		Size = UDim2.new(1, -16, 0, 0),
+		Position = UDim2.new(0, 8, 0, touch and 40 or 32),
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, {
+		create("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }),
+		create("UIPadding", { PaddingBottom = UDim.new(0, 8) }),
+	})
+	list.Parent = holder
+
+	local emptyLabel = create("TextLabel", {
+		Text = "No plugins loaded",
+		Font = Enum.Font.Gotham,
+		TextSize = touch and 13 or 11,
+		TextColor3 = Theme.SubText,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 24),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	})
+
+	local rowHeight = touch and 62 or 50
+
+	local function smallBtn(parent, text, order)
+		local b = create("TextButton", {
+			Text = text,
+			Font = Enum.Font.GothamMedium,
+			TextSize = touch and 12 or 10,
+			TextColor3 = Theme.Text,
+			BackgroundColor3 = Theme.Element,
+			Size = UDim2.new(0, touch and 70 or 58, 1, 0),
+			LayoutOrder = order,
+		}, { corner(6) })
+		b.Parent = parent
+		return b
+	end
+
+	-- Full rebuild on every registry change rather than diffing — plugin
+	-- counts are small (single digits to low dozens), so this stays cheap
+	-- and avoids a whole class of stale-row bugs.
+	local function rebuild()
+		for _, child in ipairs(list:GetChildren()) do
+			if child:IsA("Frame") then child:Destroy() end
+		end
+
+		local plugins = Library:ListPlugins()
+		if #plugins == 0 then
+			emptyLabel.Parent = list
+			return
+		end
+		emptyLabel.Parent = nil
+
+		for i, info in ipairs(plugins) do
+			local row = create("Frame", {
+				Size = UDim2.new(1, 0, 0, rowHeight),
+				BackgroundColor3 = Theme.ElementHover,
+				LayoutOrder = i,
+			}, {
+				corner(8),
+				create("UIPadding", {
+					PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 8),
+					PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6),
+				}),
+			})
+			row.Parent = list
+
+			create("TextLabel", {
+				Text = info.Name .. (info.Version and ("  v" .. tostring(info.Version)) or ""),
+				Font = Enum.Font.GothamMedium,
+				TextSize = touch and 13 or 11,
+				TextColor3 = Theme.Text,
+				BackgroundTransparency = 1,
+				Size = UDim2.new(1, -8, 0, touch and 16 or 14),
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+			}).Parent = row
+
+			create("TextLabel", {
+				Text = info.Enabled and "Enabled" or "Disabled",
+				Font = Enum.Font.Gotham,
+				TextSize = touch and 11 or 10,
+				TextColor3 = info.Enabled and Color3.fromRGB(70, 200, 110) or Color3.fromRGB(230, 75, 75),
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 0, 0, touch and 18 or 15),
+				Size = UDim2.new(1, -8, 0, touch and 14 or 12),
+				TextXAlignment = Enum.TextXAlignment.Left,
+			}).Parent = row
+
+			local btnRow = create("Frame", {
+				Size = UDim2.new(1, 0, 0, touch and 26 or 20),
+				Position = UDim2.new(0, 0, 1, touch and -26 or -20),
+				BackgroundTransparency = 1,
+			}, {
+				create("UIListLayout", {
+					FillDirection = Enum.FillDirection.Horizontal,
+					Padding = UDim.new(0, 6),
+					SortOrder = Enum.SortOrder.LayoutOrder,
+				}),
+			})
+			btnRow.Parent = row
+
+			local toggleBtn = smallBtn(btnRow, info.Enabled and "Disable" or "Enable", 1)
+			toggleBtn.MouseButton1Click:Connect(function()
+				if info.Enabled then
+					Library:DisablePlugin(info.Name)
+				else
+					Library:EnablePlugin(info.Name)
+				end
+			end)
+
+			if info.Url then
+				local reloadBtn = smallBtn(btnRow, "Reload", 2)
+				reloadBtn.MouseButton1Click:Connect(function()
+					Library:ReloadPlugin(info.Name)
+				end)
+			end
+
+			local unloadBtn = smallBtn(btnRow, "Unload", 3)
+			unloadBtn.MouseButton1Click:Connect(function()
+				Library:UnloadPlugin(info.Name)
+			end)
+		end
+	end
+
+	rebuild()
+	local conn = Library.PluginRegistryChanged:Connect(rebuild)
+
+	holder.AncestryChanged:Connect(function(_, parent)
+		if not parent and conn then conn:Disconnect() end
+	end)
+
+	return holder
 end
 
 --[[
