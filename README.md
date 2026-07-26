@@ -77,7 +77,7 @@ Flags allow elements to communicate without storing references.
 
 CornUi includes a command palette built into the title bar.
 -------------------------------------------------
-🖼️ Background System
+# 🖼️ Background System
 
 CornUi supports custom backgrounds.
 -----------------------------------------------
