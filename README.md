@@ -57,6 +57,7 @@ Corn:RegisterTheme("Sunset", {
     Background = Color3.fromRGB(30,12,10),
     Accent = Color3.fromRGB(255,120,60)
 })
+```
 --------------------------------------------------
 
 + to use the loader, use loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/refs/heads/main/Loader/Corn%20Ui%20loader.lua"))()
