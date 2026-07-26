@@ -1,128 +1,187 @@
 if game.PlaceId == 100588763114828 or game.PlaceId == 129279692364812 then
-    local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/jensonhirst/Orion/main/source')))()
-    local Window = OrionLib:MakeWindow({Name = "Corn Hub 🥀", HidePremium = true, SaveConfig = true, ConfigFolder = "Corn2yConfig"})
-    --done making window--
-    local Void = false
-    local baseplate = Instance.new("Part")
-    --functions--
-    function FarmGiftsN()
+
+    local Corn = loadstring(game:HttpGet(
+        "https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/refs/heads/main/Sourse/CornUi.lua"
+    ))()
+
+    local Window = Corn:CreateWindow({
+        Title = "Corn Hub 🥀",
+        SaveConfig = true,
+        ConfigFolder = "Corn2yConfig"
+    })
+
+    --------------------------------------------------------------------
+    -- Variables
+    --------------------------------------------------------------------
+
+    local AntiVoidEnabled = false
+    local Baseplate = Instance.new("Part")
+
+    --------------------------------------------------------------------
+    -- Functions
+    --------------------------------------------------------------------
+
+    local function FarmGiftsN()
+
         local GiftHandler = require(
-        game.ReplicatedFirst.ClientModules.GiftClient.GiftClientHandler
+            game.ReplicatedFirst.ClientModules.GiftClient.GiftClientHandler
         )
 
-        local player = game.Players.LocalPlayer
+        local Player = game.Players.LocalPlayer
 
-        local function TeleportTo(pos)
-        local char = player.Character or player.CharacterAdded:Wait()
-        local hrp = char:WaitForChild("HumanoidRootPart")
+        local function TeleportTo(Position)
+            local Character = Player.Character or Player.CharacterAdded:Wait()
+            local HRP = Character:WaitForChild("HumanoidRootPart")
 
-        hrp.CFrame = CFrame.new(pos)
+            HRP.CFrame = CFrame.new(Position)
         end
 
+        for ID, Gift in pairs(GiftHandler.Gifts) do
+            if not Gift.Collected then
 
-        for id, gift in pairs(GiftHandler.Gifts) do
-            if not gift.Collected then
-                print("Going to gift:", id, gift.Position)
+                Window:Notify({
+                    Title = "Gift Farm",
+                    Content = "Teleporting to Gift "..tostring(ID),
+                    Duration = 2
+                })
 
-                TeleportTo(gift.Position)
+                TeleportTo(Gift.Position)
 
                 task.wait(0.2)
             end
         end
+
+        Window:Notify({
+            Title = "Gift Farm",
+            Content = "Finished collecting gifts.",
+            Duration = 3
+        })
+
     end
 
-    --function end--
+    --------------------------------------------------------------------
 
-    function AntiVoid()
-        Void = true
-        local player = game.Players.LocalPlayer
-        local char = player.Character or player.CharacterAdded:Wait()
-        local hrp = char:WaitForChild("HumanoidRootPart")
-        wait(0.1)
-        if Void == true then           
-            baseplate.Size = Vector3.new(600,6,600)
-            baseplate.Position = Vector3.new(hrp.Position.X, hrp.Position.Y -20, hrp.Position.Z)
-            baseplate.Parent = workspace
-            baseplate.CanCollide = true
-            baseplate.Anchored = true
-            baseplate.Transparency = 1
-        end         
+    local function EnableAntiVoid()
+
+        if AntiVoidEnabled then
+            return
+        end
+
+        AntiVoidEnabled = true
+
+        local Player = game.Players.LocalPlayer
+        local Character = Player.Character or Player.CharacterAdded:Wait()
+        local HRP = Character:WaitForChild("HumanoidRootPart")
+
+        Baseplate.Size = Vector3.new(600,6,600)
+        Baseplate.Position = HRP.Position - Vector3.new(0,20,0)
+        Baseplate.Anchored = true
+        Baseplate.CanCollide = true
+        Baseplate.Transparency = 1
+        Baseplate.Name = "CornAntiVoid"
+        Baseplate.Parent = workspace
+
+        Window:Notify({
+            Title = "Anti Void",
+            Content = "Enabled",
+            Duration = 2
+        })
+
     end
 
-    function DisableAntiVoid()
-        Void = false
-        baseplate:Destroy()
-    end 
-    --making Farm Tab--
-    local FarmTab = Window:MakeTab({
-    Name = "Farming 🔥",
-    Icon = "nil",
-    PremiumOnly = false
-    })
-    --section--
-    local Section = FarmTab:AddSection({
-    Name = "Farms 🔥"
-    })
-    --buttons--
-    FarmTab:AddButton({
-    Name = "Farm Normal Gifts",
-    Callback = function()
-        FarmGiftsN()
+    --------------------------------------------------------------------
+
+    local function DisableAntiVoid()
+
+        AntiVoidEnabled = false
+
+        if Baseplate and Baseplate.Parent then
+            Baseplate:Destroy()
+            Baseplate = Instance.new("Part")
+        end
+
+        Window:Notify({
+            Title = "Anti Void",
+            Content = "Disabled",
+            Duration = 2
+        })
+
     end
-    })
-        
-        
-    
 
+    --------------------------------------------------------------------
+    -- Farming Tab
+    --------------------------------------------------------------------
 
-
-
-
-    --Mic Tab--
-    local MiscTab = Window:MakeTab({
-    Name = "Misc",
-    Icon = "nil",
-    PremiumOnly = false
-    })
-    --section--
-    local Section = MiscTab:AddSection({
-    Name = "Micalleniousuuss (idk spelling)"
-    })
-    --buttons--
-    MiscTab:AddButton({
-    Name = "Turn On Antivoid",
-    Callback = function()
-        AntiVoid()
-    end
-    })
-    MiscTab:AddButton({
-    Name = "Turn off Antivoid",
-    Callback = function()
-        DisableAntiVoid()
-    end
+    local FarmTab = Window:CreateTab({
+        Title = "Farming 🔥"
     })
 
+    local FarmSection = FarmTab:CreateSection({
+        Title = "Farms 🔥"
+    })
 
+    FarmSection:CreateButton({
+        Title = "Farm Normal Gifts",
 
+        Callback = function()
+            FarmGiftsN()
+        end
+    })
 
+    --------------------------------------------------------------------
+    -- Misc Tab
+    --------------------------------------------------------------------
 
+    local MiscTab = Window:CreateTab({
+        Title = "Misc"
+    })
 
+    local MiscSection = MiscTab:CreateSection({
+        Title = "Miscellaneous"
+    })
 
+    MiscSection:CreateToggle({
 
+        Title = "Anti Void",
 
+        Default = false,
 
+        Flag = "AntiVoid",
 
+        Callback = function(Value)
 
+            if Value then
+                EnableAntiVoid()
+            else
+                DisableAntiVoid()
+            end
 
+        end
+    })
 
+    --------------------------------------------------------------------
+    -- Command Palette
+    --------------------------------------------------------------------
 
+    Window:RegisterCommand({
+        Name = "farmgifts",
+        Description = "Collect all available gifts",
 
+        Callback = function()
+            FarmGiftsN()
+        end
+    })
 
+    Window:RegisterCommand({
+        Name = "antivoid",
+        Description = "Toggle Anti Void",
 
+        Callback = function()
 
+            local State = not Corn:GetFlag("AntiVoid")
+            Corn:SetFlag("AntiVoid", State)
 
+        end
+    })
 
-
-
-
-end 
+end
