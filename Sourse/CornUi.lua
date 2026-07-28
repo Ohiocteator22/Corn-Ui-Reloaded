@@ -496,6 +496,11 @@ end
 function Library:CreateWindow(config)
 	config = config or {}
 	local windowName = config.Name or "UI Library"
+	-- Each GUI name owns one window. Keeping the default preserves the original
+	-- single-window behavior, while an external/secondary script can provide a
+	-- different GuiName and coexist with the primary hub.
+	local guiName = config.GuiName or "MobileUILib"
+	local windowPosition = config.Position or UDim2.new(0.5, 0, 0.5, 0)
 	local subtitle = config.Subtitle -- optional second line under the title
 	local iconId = config.Icon -- can be a raw asset id number, or a full "rbxassetid://" string
 	if iconId and type(iconId) == "number" then
@@ -509,12 +514,13 @@ function Library:CreateWindow(config)
 	for k, v in pairs(preset) do Theme[k] = v end
 	Library._currentThemeName = Themes[config.Theme] and config.Theme or "Dark"
 
-	-- Remove any previous instance of this UI
-	local existing = PlayerGui:FindFirstChild("MobileUILib")
+	-- Replace only the window using this GUI identity. This lets independently
+	-- hosted scripts create a secondary CornUi window with another GuiName.
+	local existing = PlayerGui:FindFirstChild(guiName)
 	if existing then existing:Destroy() end
 
 	local screenGui = create("ScreenGui", {
-		Name = "MobileUILib",
+		Name = guiName,
 		ResetOnSpawn = false,
 		-- Global mode compares ZIndex across the WHOLE tree, not just siblings.
 		-- Needed so overlays (spotlight dimmer, intro, dropdown panels) can
@@ -528,6 +534,7 @@ function Library:CreateWindow(config)
 	local uiScale = create("UIScale", { Scale = 1 })
 
 	local touch = isTouchDevice()
+	local togglePosition = config.TogglePosition or UDim2.new(1, -(touch and 68 or 58), 0, 16)
 	-- Base size: wider % of screen on mobile since screens are smaller/portrait.
 	-- Bumped taller than before so ~3 tabs fit before the tab list needs to scroll.
 	local mainSizeScale = touch and UDim2.new(0.92, 0, 0.82, 0) or UDim2.new(0, 560, 0, 460)
@@ -541,7 +548,7 @@ function Library:CreateWindow(config)
 	local main = create("Frame", {
 		Name = "Main",
 		Size = mainSizeScale,
-		Position = UDim2.new(0.5, 0, 0.5, 0),
+		Position = windowPosition,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		BackgroundColor3 = Theme.Background,
 		BorderSizePixel = 0,
@@ -727,7 +734,7 @@ function Library:CreateWindow(config)
 			Image = "",
 			BackgroundColor3 = Theme.ToggleButton,
 			Size = UDim2.new(0, floatSize, 0, floatSize),
-			Position = UDim2.new(1, -(floatSize + 16), 0, 16),
+			Position = togglePosition,
 			ZIndex = 50,
 		}, { corner(floatSize / 2), stroke(Theme.Accent, 1.5) })
 
@@ -754,7 +761,7 @@ function Library:CreateWindow(config)
 			TextColor3 = Theme.Text,
 			BackgroundColor3 = Theme.ToggleButton,
 			Size = UDim2.new(0, floatSize, 0, floatSize),
-			Position = UDim2.new(1, -(floatSize + 16), 0, 16),
+			Position = togglePosition,
 			ZIndex = 50,
 		}, { corner(floatSize / 2), stroke(Theme.Accent, 1.5) })
 	end
