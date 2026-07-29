@@ -946,6 +946,8 @@ function Library:CreateWindow(config)
 		"Tip: use the theme button to switch between light and dark mode.",
 		"Tip: settings with a Flag can be saved and restored with configs.",
 		"Tip: tabs and the hub window can be dragged on desktop and touch.",
+		"Create your own themes! using the gradient feature",
+		"tired of a new key daily, get a weekly key now!",
 	}
 	local funnyIntroTooltips = {
 		"Downloading more RAM...",
@@ -954,6 +956,10 @@ function Library:CreateWindow(config)
 		"Teaching the corn how to code...",
 		"Convincing the buttons to behave...",
 		"Calibrating the cat launcher...",
+		"gooning....Wait",
+		"Yes i used claude for debugging, SMD if you have problem",
+		"Alt+F4 gives free bobux",
+		
 	}
 	local introTooltips = introConfig.Funny == true and funnyIntroTooltips or normalIntroTooltips
 	local lastIntroTooltip
