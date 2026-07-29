@@ -940,6 +940,32 @@ function Library:CreateWindow(config)
 	end
 	local introText = introConfig.Text or "-By Lifeless"
 	local introHold = introConfig.Duration or 1.4 -- seconds the intro stays fully visible
+	local normalIntroTooltips = {
+		"Tip: click the hub name to open the command palette.",
+		"Tip: click the floating button to hide or restore the hub.",
+		"Tip: use the theme button to switch between light and dark mode.",
+		"Tip: settings with a Flag can be saved and restored with configs.",
+		"Tip: tabs and the hub window can be dragged on desktop and touch.",
+	}
+	local funnyIntroTooltips = {
+		"Downloading more RAM...",
+		"Cleaning the toilet...",
+		"C:????????????????????????: Something happened.",
+		"Teaching the corn how to code...",
+		"Convincing the buttons to behave...",
+		"Calibrating the cat launcher...",
+	}
+	local introTooltips = introConfig.Funny == true and funnyIntroTooltips or normalIntroTooltips
+	local lastIntroTooltip
+	local function nextIntroTooltip()
+		if #introTooltips == 1 then return introTooltips[1] end
+		local tooltip
+		repeat
+			tooltip = introTooltips[math.random(1, #introTooltips)]
+		until tooltip ~= lastIntroTooltip
+		lastIntroTooltip = tooltip
+		return tooltip
+	end
 
 	local introBg = isLight and Color3.fromRGB(250, 250, 252) or Color3.fromRGB(0, 0, 0)
 	local introLineColor = isLight and Color3.fromRGB(20, 20, 24) or Color3.fromRGB(255, 255, 255)
@@ -965,7 +991,7 @@ function Library:CreateWindow(config)
 	wipe.Parent = introOverlay
 
 	local introHolder = create("Frame", {
-		Size = UDim2.new(0, 280, 0, 220),
+		Size = UDim2.new(0, 280, 0, 260),
 		Position = UDim2.new(0.5, 0, 0.5, 0),
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		BackgroundTransparency = 1,
@@ -1005,6 +1031,20 @@ function Library:CreateWindow(config)
 	})
 	introTextLabel.Parent = introHolder
 
+	local introTooltipLabel = create("TextLabel", {
+		Name = "Tooltip",
+		Text = nextIntroTooltip(),
+		Font = Enum.Font.Gotham,
+		TextSize = 13,
+		TextColor3 = isLight and Color3.fromRGB(85, 85, 92) or Color3.fromRGB(190, 190, 198),
+		TextTransparency = 1,
+		TextWrapped = true,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, -20, 0, 38),
+		ZIndex = 302,
+	})
+	introTooltipLabel.Parent = introHolder
+
 	task.spawn(function()
 		-- Phase 1: brush-stroke wipe reveal
 		tween(wipe, { Size = UDim2.new(1, 0, 1, 0) }, 0.5)
@@ -1016,10 +1056,23 @@ function Library:CreateWindow(config)
 			task.wait(0.3)
 		end
 		tween(introTextLabel, { TextTransparency = 0 }, 0.5)
-		task.wait(introHold)
+		tween(introTooltipLabel, { TextTransparency = 0 }, 0.5)
+
+		-- A normal intro shows one useful tip; longer custom intros rotate through
+		-- the selected normal/funny list without extending the configured duration.
+		local elapsed = 0
+		while elapsed < introHold do
+			local waitTime = math.min(2, introHold - elapsed)
+			task.wait(waitTime)
+			elapsed = elapsed + waitTime
+			if elapsed < introHold then
+				introTooltipLabel.Text = nextIntroTooltip()
+			end
+		end
 
 		-- Phase 3: fade out logo/text, then split the panel in two and part it
 		tween(introTextLabel, { TextTransparency = 1 }, 0.3)
+		tween(introTooltipLabel, { TextTransparency = 1 }, 0.3)
 		if introImgLabel then tween(introImgLabel, { ImageTransparency = 1 }, 0.3) end
 		task.wait(0.3)
 
