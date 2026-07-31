@@ -238,7 +238,7 @@ return {
 		----------------------------------------------------------------
 
 		if ctx.Window then
-			local tab = local tab = ctx:CreateTab("Movement", {
+			local tab = ctx:CreateTab("Movement", {
     											  Icon = nil,
 													})
 			local section = tab:CreateSection("Character")
