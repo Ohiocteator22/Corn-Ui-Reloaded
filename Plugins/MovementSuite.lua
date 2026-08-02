@@ -72,75 +72,149 @@ return {
 		-- Fly
 		----------------------------------------------------------------
 
-		local flyConn, flyForce
+	
 
-		local function stopFly()
-			if flyConn then flyConn:Disconnect(); flyConn = nil end
-			if flyForce then
-				pcall(function() flyForce:Destroy() end)
-				flyForce = nil
-			end
-			local hum = getHumanoid()
-			if hum then
-				pcall(function() hum.PlatformStand = false end)
-			end
+local flyVelocity
+local flyOrientation
+local flyAttachment
+local flyConn
+
+local function startFly()
+	if flyConn then return end
+
+	local char = getChar()
+	local hum = getHumanoid()
+	local root = getRoot()
+
+	if not char or not hum or not root then
+		return
+	end
+
+	local attachment = Instance.new("Attachment")
+	attachment.Name = "CornFlyAttachment"
+	attachment.Parent = root
+
+	flyAttachment = attachment
+
+	flyVelocity = Instance.new("LinearVelocity")
+	flyVelocity.Name = "CornFlyVelocity"
+	flyVelocity.MaxForce = math.huge
+	flyVelocity.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
+	flyVelocity.RelativeTo = Enum.ActuatorRelativeTo.World
+	flyVelocity.Attachment0 = attachment
+	flyVelocity.VectorVelocity = Vector3.zero
+	flyVelocity.Parent = root
+
+
+	flyOrientation = Instance.new("AlignOrientation")
+	flyOrientation.Name = "CornFlyOrientation"
+	flyOrientation.MaxTorque = math.huge
+	flyOrientation.Responsiveness = 200
+	flyOrientation.Mode = Enum.OrientationAlignmentMode.OneAttachment
+	flyOrientation.Attachment0 = attachment
+	flyOrientation.Parent = root
+
+
+	hum:ChangeState(Enum.HumanoidStateType.Flying)
+
+
+	flyConn = RunService.RenderStepped:Connect(function()
+
+		if not flyVelocity or not root.Parent then
+			stopFly()
+			return
 		end
 
-		local function startFly()
-			if flyConn then return end -- already flying
-			local hum, root = getHumanoid(), getRoot()
-			if not hum or not root then return end
 
-			local ok = pcall(function()
-				hum.PlatformStand = true
-				flyForce = Instance.new("BodyVelocity")
-				flyForce.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-				flyForce.Velocity = Vector3.zero
-				flyForce.Parent = root
-			end)
-			if not ok then
-				-- Root/Humanoid got yanked out from under us (respawn race) —
-				-- bail out cleanly instead of leaving a half-built fly state.
-				stopFly()
-				return
-			end
+		local cam = workspace.CurrentCamera
+		if not cam then return end
 
-			flyConn = RunService.RenderStepped:Connect(function()
-				-- Wrapped: camera can change (CurrentCamera swap), and the
-				-- character can disappear mid-frame on respawn/teleport.
-				local stepOk, stepErr = pcall(function()
-					if not flyForce or not flyForce.Parent then return end
-					local cam = workspace.CurrentCamera
-					if not cam then return end
-					local speed = ctx:GetFlag("FlySpeed") or 50
-					local moveDir = hum.MoveDirection -- magnitude 0..1, already input-relative
-					if moveDir.Magnitude > 0.05 then
-						-- Re-project onto the camera's facing so "forward" always
-						-- means "where you're looking", flattened Y from moveDir's own Y.
-						local look = cam.CFrame.LookVector
-						local right = cam.CFrame.RightVector
 
-						local direction =
-										(right * moveDir.X)
-											+
-										(look * -moveDir.Z)
+		local move = hum.MoveDirection
 
-						flyForce.Velocity = direction * speed
-					else
-						flyForce.Velocity = flyForce.Velocity:Lerp(Vector3.zero, 0.2)
-					end
-				end)
-				if not stepOk then
-					warn("[MovementSuite] Fly step error, stopping fly: " .. tostring(stepErr))
-					stopFly()
-				end
-			end)
+
+		local direction = Vector3.zero
+
+
+		if move.Magnitude > 0 then
+			direction =
+				(cam.CFrame.RightVector * move.X)
+				+
+				(cam.CFrame.LookVector * -move.Z)
 		end
 
-		local function setFly(on)
-			ctx:SetFlag("Fly", on)
-			if on then startFly() else stopFly() end
+
+		-- Mobile / PC vertical controls
+		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+			direction += Vector3.new(0,1,0)
 		end
+
+		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+			direction -= Vector3.new(0,1,0)
+		end
+
+
+		local speed = ctx:GetFlag("FlySpeed") or 50
+
+		if direction.Magnitude > 0 then
+			flyVelocity.VectorVelocity = direction.Unit * speed
+		else
+			flyVelocity.VectorVelocity = Vector3.zero
+		end
+
+
+		flyOrientation.CFrame = cam.CFrame
+	end)
+end
+
+
+
+local function stopFly()
+
+	if flyConn then
+		flyConn:Disconnect()
+		flyConn = nil
+	end
+
+
+	if flyVelocity then
+		flyVelocity:Destroy()
+		flyVelocity = nil
+	end
+
+
+	if flyOrientation then
+		flyOrientation:Destroy()
+		flyOrientation = nil
+	end
+
+
+	if flyAttachment then
+		flyAttachment:Destroy()
+		flyAttachment = nil
+	end
+
+
+	local hum = getHumanoid()
+
+	if hum then
+		hum:ChangeState(Enum.HumanoidStateType.Freefall)
+	end
+end
+
+
+
+local function setFly(on)
+
+	ctx:SetFlag("Fly", on)
+
+	if on then
+		startFly()
+	else
+		stopFly()
+	end
+
+end
 
 		player.CharacterAdded:Connect(function()
 			-- Flying doesn't survive a respawn (BodyVelocity/root are gone);
