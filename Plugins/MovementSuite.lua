@@ -140,9 +140,9 @@ local function startFly()
 
 		if move.Magnitude > 0 then
 			direction =
-				(cam.CFrame.RightVector * move.X)
-				+
-				(cam.CFrame.LookVector * -move.Z)
+					(cam.CFrame.RightVector * move.X)
+						+
+					(cam.CFrame.LookVector * move.Z)
 		end
 
 
