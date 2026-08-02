@@ -16,7 +16,7 @@ CornUi provides an Orion-style development experience with a modern architecture
 
 Built for developers who want a clean, expandable UI framework instead of a collection of scripts.
 
-## dont know lua yet? hop on to "https://ohiocteator22.github.io/CornUi_Script_Builder.html"
+## don't wanna type the API? hop on to "https://ohiocteator22.github.io/CornUi_Script_Builder.html"
 ---
 
 # ✨ Features
