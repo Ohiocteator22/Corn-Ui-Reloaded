@@ -118,10 +118,14 @@ return {
 						-- Re-project onto the camera's facing so "forward" always
 						-- means "where you're looking", flattened Y from moveDir's own Y.
 						local look = cam.CFrame.LookVector
-						local flatLook = Vector3.new(look.X, 0, look.Z)
-						if flatLook.Magnitude > 0.001 then flatLook = flatLook.Unit end
 						local right = cam.CFrame.RightVector
-						flyForce.Velocity = (flatLook * -moveDir.Z + right * moveDir.X) * speed
+
+						local direction =
+										(right * moveDir.X)
+											+
+										(look * -moveDir.Z)
+
+						flyForce.Velocity = direction * speed
 					else
 						flyForce.Velocity = flyForce.Velocity:Lerp(Vector3.zero, 0.2)
 					end
