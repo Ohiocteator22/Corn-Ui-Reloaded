@@ -79,6 +79,8 @@ local flyOrientation
 local flyAttachment
 local flyConn
 
+local stopFly -- forward declaration
+
 local function startFly()
 	if flyConn then return end
 
@@ -169,7 +171,7 @@ end
 
 
 
-local function stopFly()
+ function stopFly()
 
 	if flyConn then
 		flyConn:Disconnect()
