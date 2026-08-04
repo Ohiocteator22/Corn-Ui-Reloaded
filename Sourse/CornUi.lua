@@ -2258,10 +2258,1985 @@ function TM:CreateButton(config)
 	return Library:_wrapElement(btn)
 end
 
--- [REST OF ELEMENTS: Toggle, Slider, Textbox, Keybind, Hotkey, ColorPicker, 
---  ThemeEditor, Dropdown, Search, DiscordButton, Divider, Card, Paragraph, 
---  Image, ProgressBar, KeybindList, ColorGradient, NotificationCenter, 
---  Timer, Checklist, RadioGroup, MultiDropdown, Meter, PluginManager]
+-- ===================== TOGGLE (with Three-State) =====================
+function TM:CreateToggle(config)
+	config = config or {}
+	local touch = self._touch
+	local compact = Library.Flags.CompactMode
+	local threeState = config.ThreeState or false
+	
+	local states = threeState and {"off", "auto", "on"} or {false, true}
+	local stateIndex = 1
+	local state = config.Default or (threeState and "auto" or false)
+	
+	if threeState then
+		if state == "on" then stateIndex = 3
+		elseif state == "auto" then stateIndex = 2
+		else stateIndex = 1 end
+	else
+		if state then stateIndex = 2 else stateIndex = 1 end
+	end
+	
+	local callback = config.Callback or function() end
 
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and (compact and 38 or 46) or (compact and 28 or 34)),
+		BackgroundColor3 = Theme.Element,
+	}, { corner(12), stroke() })
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Toggle")
+
+	if config.Flag then Library:SetFlag(config.Flag, state) end
+
+	create("TextLabel", {
+		Text = config.Name or "Toggle",
+		Font = Enum.Font.GothamMedium,
+		TextSize = touch and (compact and 14 or 16) or (compact and 12 or 14),
+		TextColor3 = Theme.Text,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, -70, 1, 0),
+		Position = UDim2.new(0, 12, 0, 0),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}).Parent = holder
+
+	local switchBg = create("Frame", {
+		Size = UDim2.new(0, touch and (compact and 42 or 50) or (compact and 34 or 40), 0, touch and (compact and 24 or 28) or (compact and 18 or 22)),
+		Position = UDim2.new(1, touch and (compact and -52 or -60) or (compact and -42 or -48), 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+		BackgroundColor3 = threeState and Color3.fromRGB(100, 100, 100) or (state and Theme.Accent or Color3.fromRGB(60, 60, 68)),
+	}, { corner(18) })
+	switchBg.Parent = holder
+
+	local knob = create("Frame", {
+		Size = UDim2.new(0, touch and (compact and 18 or 22) or (compact and 14 or 16), 0, touch and (compact and 18 or 22) or (compact and 14 or 16)),
+		Position = threeState and UDim2.new(0.5, -((touch and (compact and 18 or 22) or (compact and 14 or 16)) / 2), 0.5, 0) or
+			(state and UDim2.new(1, -((touch and (compact and 18 or 22) or (compact and 14 or 16)) + 3), 0.5, 0) or UDim2.new(0, 3, 0.5, 0)),
+		AnchorPoint = Vector2.new(0, 0.5),
+		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+	}, { corner(15) })
+	knob.Parent = switchBg
+	
+	if threeState then
+		local stateLabel = create("TextLabel", {
+			Text = "−",
+			Font = Enum.Font.GothamBold,
+			TextSize = touch and 14 or 12,
+			TextColor3 = Color3.fromRGB(100, 100, 100),
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 1, 0),
+		})
+		stateLabel.Parent = knob
+	end
+
+	local hitArea = create("TextButton", {
+		Text = "",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 1, 0),
+	})
+	hitArea.Parent = holder
+
+	hitArea.MouseButton1Click:Connect(function()
+		if threeState then
+			stateIndex = (stateIndex % 3) + 1
+			local states_map = {1, 2, 3}
+			state = states_map[stateIndex]
+		else
+			state = not state
+		end
+		
+		if threeState then
+			if state == 3 then
+				switchBg.BackgroundColor3 = Theme.Accent
+				knob.Position = UDim2.new(1, -((touch and (compact and 18 or 22) or (compact and 14 or 16)) + 3), 0.5, 0)
+				stateLabel.Text = "+"
+			elseif state == 2 then
+				switchBg.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
+				knob.Position = UDim2.new(0.5, -((touch and (compact and 18 or 22) or (compact and 14 or 16)) / 2), 0.5, 0)
+				stateLabel.Text = "−"
+			else
+				switchBg.BackgroundColor3 = Color3.fromRGB(60, 60, 68)
+				knob.Position = UDim2.new(0, 3, 0.5, 0)
+				stateLabel.Text = "×"
+			end
+		else
+			switchBg.BackgroundColor3 = state and Theme.Accent or Color3.fromRGB(60, 60, 68)
+			knob.Position = state and UDim2.new(1, -((touch and (compact and 18 or 22) or (compact and 14 or 16)) + 3), 0.5, 0) or UDim2.new(0, 3, 0.5, 0)
+		end
+		
+		if config.Flag then Library:SetFlag(config.Flag, state) end
+		playInteractionSound("toggle")
+		local ok, err = pcall(callback, state)
+		if not ok then warn("[MobileUILib] Toggle callback error: " .. tostring(err)) end
+	end)
+
+	local handle = { 
+		Set = function(_, value)
+			if threeState then
+				if value == "on" then stateIndex = 3
+				elseif value == "auto" then stateIndex = 2
+				else stateIndex = 1 end
+			else
+				state = value
+			end
+			hitArea.MouseButton1Click:Fire()
+		end, 
+		Get = function() return state end 
+	}
+	if config.Flag then Library.FlagElements[config.Flag] = handle end
+	return Library:_wrapElement(holder, handle)
+end
+
+-- ===================== SLIDER =====================
+function TM:CreateSlider(config)
+	config = config or {}
+	local touch = self._touch
+	local compact = Library.Flags.CompactMode
+	local min = config.Min or 0
+	local max = config.Max or 100
+	local default = config.Default or min
+	local callback = config.Callback or function() end
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and (compact and 48 or 58) or (compact and 38 or 46)),
+		BackgroundColor3 = Theme.Element,
+	}, { corner(12), stroke() })
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Slider")
+
+	if config.Flag then Library:SetFlag(config.Flag, default) end
+
+	local label = create("TextLabel", {
+		Text = (config.Name or "Slider") .. ": " .. tostring(default),
+		Font = Enum.Font.GothamMedium,
+		TextSize = touch and (compact and 13 or 15) or (compact and 11 or 13),
+		TextColor3 = Theme.Text,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, -20, 0, 22),
+		Position = UDim2.new(0, 12, 0, compact and 2 or 4),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	})
+	label.Parent = holder
+
+	local track = create("Frame", {
+		Size = UDim2.new(1, -24, 0, touch and (compact and 10 or 14) or (compact and 6 or 8)),
+		Position = UDim2.new(0, 12, 1, touch and (compact and -18 or -22) or (compact and -14 or -16)),
+		BackgroundColor3 = Color3.fromRGB(55, 55, 62),
+	}, { corner(10) })
+	track.Parent = holder
+
+	local fraction = (default - min) / (max - min)
+	local fill = create("Frame", {
+		Size = UDim2.new(fraction, 0, 1, 0),
+		BackgroundColor3 = Theme.Accent,
+	}, { corner(10) })
+	fill.Parent = track
+
+	local hitArea = create("TextButton", {
+		Text = "",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, touch and (compact and 34 or 40) or (compact and 20 or 26)),
+		Position = UDim2.new(0, 0, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+	})
+	hitArea.Parent = track
+
+	local dragging = false
+
+	local function setFromInputPosition(xPos)
+		local relative = math.clamp((xPos - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+		fill.Size = UDim2.new(relative, 0, 1, 0)
+		local value = math.floor(min + (max - min) * relative)
+		label.Text = (config.Name or "Slider") .. ": " .. tostring(value)
+		if config.Flag then Library:SetFlag(config.Flag, value) end
+		local ok, err = pcall(callback, value)
+		if not ok then warn("[MobileUILib] Slider callback error: " .. tostring(err)) end
+	end
+
+	hitArea.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			setFromInputPosition(input.Position.X)
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch) then
+			setFromInputPosition(input.Position.X)
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end)
+
+	local handle = { Set = function(_, value)
+		local relative = math.clamp((value - min) / (max - min), 0, 1)
+		fill.Size = UDim2.new(relative, 0, 1, 0)
+		label.Text = (config.Name or "Slider") .. ": " .. tostring(value)
+		if config.Flag then Library:SetFlag(config.Flag, value) end
+	end, Get = function() return config.Flag and Library:GetFlag(config.Flag) or nil end }
+	if config.Flag then Library.FlagElements[config.Flag] = handle end
+	return Library:_wrapElement(holder, handle)
+end
+
+-- ===================== TEXTBOX =====================
+function TM:CreateTextbox(config)
+	config = config or {}
+	local touch = self._touch
+	local compact = Library.Flags.CompactMode
+	local callback = config.Callback or function() end
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and (compact and 38 or 46) or (compact and 28 or 34)),
+		BackgroundColor3 = Theme.Element,
+	}, { corner(12), stroke() })
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Input")
+
+	if config.Flag then Library:SetFlag(config.Flag, config.Default or "") end
+
+	create("TextLabel", {
+		Text = config.Name or "Input",
+		Font = Enum.Font.GothamMedium,
+		TextSize = touch and (compact and 13 or 15) or (compact and 11 or 13),
+		TextColor3 = Theme.Text,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(0.4, 0, 1, 0),
+		Position = UDim2.new(0, 12, 0, 0),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}).Parent = holder
+
+	local box = create("TextBox", {
+		Text = config.Default or "",
+		PlaceholderText = config.Placeholder or "Enter text...",
+		Font = Enum.Font.Gotham,
+		TextSize = touch and (compact and 13 or 15) or (compact and 11 or 13),
+		TextColor3 = Theme.Text,
+		PlaceholderColor3 = Theme.SubText,
+		BackgroundColor3 = Theme.ElementHover,
+		Size = UDim2.new(0.55, -12, 0, touch and (compact and 28 or 34) or (compact and 18 or 24)),
+		Position = UDim2.new(0.45, 0, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+		ClearTextOnFocus = false,
+	}, { corner(10) })
+	box.Parent = holder
+
+	box.FocusLost:Connect(function(enterPressed)
+		if config.Flag then Library:SetFlag(config.Flag, box.Text) end
+		local ok, err = pcall(callback, box.Text, enterPressed)
+		if not ok then warn("[MobileUILib] Textbox callback error: " .. tostring(err)) end
+	end)
+
+	local handle = { Set = function(_, value)
+		box.Text = value
+		if config.Flag then Library:SetFlag(config.Flag, value) end
+	end, Get = function() return box.Text end }
+	if config.Flag then Library.FlagElements[config.Flag] = handle end
+	return Library:_wrapElement(holder, handle)
+end
+
+TM.CreateTextBox = TM.CreateTextbox
+
+-- ===================== KEYBIND =====================
+function TM:CreateKeybind(config)
+	config = config or {}
+	local touch = self._touch
+	local compact = Library.Flags.CompactMode
+	local currentKey = config.Default or Enum.KeyCode.Unknown
+	local callback = config.Callback or function() end
+	local listening = false
+	local keybindDescriptor = { Name = config.Name or "Keybind" }
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and (compact and 38 or 46) or (compact and 28 or 34)),
+		BackgroundColor3 = Theme.Element,
+	}, { corner(12), stroke() })
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Keybind")
+
+	if config.Flag then Library:SetFlag(config.Flag, currentKey) end
+
+	create("TextLabel", {
+		Text = config.Name or "Keybind",
+		Font = Enum.Font.GothamMedium,
+		TextSize = touch and (compact and 13 or 15) or (compact and 11 or 13),
+		TextColor3 = Theme.Text,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, -100, 1, 0),
+		Position = UDim2.new(0, 12, 0, 0),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}).Parent = holder
+
+	local keyBtn = create("TextButton", {
+		Text = (currentKey ~= Enum.KeyCode.Unknown) and currentKey.Name or "None",
+		Font = Enum.Font.GothamBold,
+		TextSize = touch and (compact and 13 or 15) or (compact and 11 or 13),
+		TextColor3 = Theme.Text,
+		BackgroundColor3 = Theme.ElementHover,
+		Size = UDim2.new(0, touch and (compact and 70 or 80) or (compact and 60 or 70), 0, touch and (compact and 28 or 34) or (compact and 18 or 24)),
+		Position = UDim2.new(1, touch and (compact and -80 or -90) or (compact and -70 or -80), 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+	}, { corner(10) })
+	keyBtn.Parent = holder
+
+	keyBtn.MouseButton1Click:Connect(function()
+		if listening then return end
+		listening = true
+		keyBtn.Text = "..."
+		local conn
+		conn = UserInputService.InputBegan:Connect(function(input, gpe)
+			if gpe then return end
+			if input.UserInputType == Enum.UserInputType.Keyboard then
+				currentKey = input.KeyCode
+				keyBtn.Text = currentKey.Name
+				listening = false
+				conn:Disconnect()
+				if config.Flag then Library:SetFlag(config.Flag, currentKey) end
+				Library.KeybindChanged:Fire(keybindDescriptor)
+				local ok, err = pcall(callback, currentKey)
+				if not ok then warn("[MobileUILib] Keybind callback error: " .. tostring(err)) end
+			end
+		end)
+	end)
+
+	local handle = {
+		Set = function(_, keyCode)
+			currentKey = keyCode
+			keyBtn.Text = keyCode.Name
+			if config.Flag then Library:SetFlag(config.Flag, keyCode) end
+			Library.KeybindChanged:Fire(keybindDescriptor)
+		end,
+		Get = function() return currentKey end,
+		Destroy = function(_)
+			for i, d in ipairs(Library.Keybinds) do
+				if d == keybindDescriptor then
+					table.remove(Library.Keybinds, i)
+					break
+				end
+			end
+			Library.KeybindUnregistered:Fire(keybindDescriptor)
+			if holder and holder.Parent then holder:Destroy() end
+		end,
+	}
+	if config.Flag then Library.FlagElements[config.Flag] = handle end
+
+	keybindDescriptor.Get = handle.Get
+	table.insert(Library.Keybinds, keybindDescriptor)
+	Library.KeybindRegistered:Fire(keybindDescriptor)
+
+	return Library:_wrapElement(holder, handle)
+end
+
+-- ===================== HOTKEY =====================
+function TM:CreateHotkey(config)
+	config = config or {}
+	local touch = self._touch
+	local compact = Library.Flags.CompactMode
+	local currentKey = config.Default or Enum.KeyCode.Unknown
+	local callback = config.Callback or function() end
+	local listening = false
+	local isPressed = false
+	local holdTimer = nil
+	local keybindDescriptor = { Name = config.Name or "Hotkey" }
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and (compact and 38 or 46) or (compact and 28 or 34)),
+		BackgroundColor3 = Theme.Element,
+	}, { corner(12), stroke() })
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Hotkey")
+
+	if config.Flag then Library:SetFlag(config.Flag, currentKey) end
+
+	create("TextLabel", {
+		Text = config.Name or "Hotkey",
+		Font = Enum.Font.GothamMedium,
+		TextSize = touch and (compact and 13 or 15) or (compact and 11 or 13),
+		TextColor3 = Theme.Text,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, -100, 1, 0),
+		Position = UDim2.new(0, 12, 0, 0),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}).Parent = holder
+
+	local keyBtn = create("TextButton", {
+		Text = (currentKey ~= Enum.KeyCode.Unknown) and currentKey.Name or "None",
+		Font = Enum.Font.GothamBold,
+		TextSize = touch and (compact and 13 or 15) or (compact and 11 or 13),
+		TextColor3 = Theme.Text,
+		BackgroundColor3 = Theme.ElementHover,
+		Size = UDim2.new(0, touch and (compact and 70 or 80) or (compact and 60 or 70), 0, touch and (compact and 28 or 34) or (compact and 18 or 24)),
+		Position = UDim2.new(1, touch and (compact and -80 or -90) or (compact and -70 or -80), 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+	}, { corner(10) })
+	keyBtn.Parent = holder
+
+	keyBtn.MouseButton1Click:Connect(function()
+		if listening then return end
+		listening = true
+		keyBtn.Text = "..."
+		local conn
+		conn = UserInputService.InputBegan:Connect(function(input, gpe)
+			if gpe then return end
+			if input.UserInputType == Enum.UserInputType.Keyboard then
+				currentKey = input.KeyCode
+				keyBtn.Text = currentKey.Name
+				listening = false
+				conn:Disconnect()
+				if config.Flag then Library:SetFlag(config.Flag, currentKey) end
+				local ok, err = pcall(callback, "bind", currentKey)
+				if not ok then warn("[MobileUILib] Hotkey callback error: " .. tostring(err)) end
+			end
+		end)
+	end)
+
+	local pressConn
+	local function startListening()
+		if pressConn then pressConn:Disconnect() end
+		pressConn = UserInputService.InputBegan:Connect(function(input, gpe)
+			if gpe then return end
+			if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == currentKey and not listening then
+				isPressed = true
+				keyBtn.BackgroundColor3 = Theme.Accent
+				keyBtn.TextColor3 = Theme.TextOnAccent
+				local ok, err = pcall(callback, "press", currentKey)
+				if not ok then warn("[MobileUILib] Hotkey callback error: " .. tostring(err)) end
+				
+				if holdTimer then holdTimer:Cancel() end
+				holdTimer = task.delay(0.5, function()
+					if isPressed then
+						local ok2, err2 = pcall(callback, "hold", currentKey)
+						if not ok2 then warn("[MobileUILib] Hotkey callback error: " .. tostring(err2)) end
+					end
+				end)
+			end
+		end)
+		
+		UserInputService.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == currentKey and isPressed then
+				isPressed = false
+				keyBtn.BackgroundColor3 = Theme.ElementHover
+				keyBtn.TextColor3 = Theme.Text
+				if holdTimer then holdTimer:Cancel() end
+				local ok, err = pcall(callback, "release", currentKey)
+				if not ok then warn("[MobileUILib] Hotkey callback error: " .. tostring(err)) end
+			end
+		end)
+	end
+	startListening()
+
+	local handle = {
+		Set = function(_, keyCode)
+			currentKey = keyCode
+			keyBtn.Text = keyCode.Name
+			if config.Flag then Library:SetFlag(config.Flag, keyCode) end
+			startListening()
+		end,
+		Get = function() return currentKey end,
+		Destroy = function(_)
+			if pressConn then pressConn:Disconnect() end
+			if holdTimer then holdTimer:Cancel() end
+			if holder and holder.Parent then holder:Destroy() end
+		end,
+	}
+	if config.Flag then Library.FlagElements[config.Flag] = handle end
+
+	return Library:_wrapElement(holder, handle)
+end
+
+-- ===================== COLOR PICKER =====================
+function TM:CreateColorPicker(config)
+	config = config or {}
+	local touch = self._touch
+	local compact = Library.Flags.CompactMode
+	local color = config.Default or Color3.fromRGB(255, 0, 0)
+	local callback = config.Callback or function() end
+	local open = false
+	local hue, sat, val = color:ToHSV()
+
+	local closedH = touch and (compact and 38 or 46) or (compact and 28 or 34)
+	local panelHeight = touch and (compact and 120 or 150) or (compact and 100 or 130)
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, closedH),
+		BackgroundColor3 = Theme.Element,
+		ClipsDescendants = true,
+	}, { corner(12), stroke() })
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Color")
+
+	if config.Flag then Library:SetFlag(config.Flag, color) end
+
+	create("TextLabel", {
+		Text = config.Name or "Color",
+		Font = Enum.Font.GothamMedium,
+		TextSize = touch and (compact and 13 or 15) or (compact and 11 or 13),
+		TextColor3 = Theme.Text,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, -60, 0, closedH),
+		Position = UDim2.new(0, 12, 0, 0),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}).Parent = holder
+
+	local swatch = create("TextButton", {
+		Text = "",
+		BackgroundColor3 = color,
+		Size = UDim2.new(0, touch and (compact and 28 or 34) or (compact and 20 or 26), 0, touch and (compact and 28 or 34) or (compact and 20 or 26)),
+		Position = UDim2.new(1, touch and (compact and -38 or -44) or (compact and -28 or -34), 0, (closedH - (touch and (compact and 28 or 34) or (compact and 20 or 26))) / 2),
+	}, { corner(10), stroke() })
+	swatch.Parent = holder
+
+	local panel = create("Frame", {
+		Size = UDim2.new(1, -20, 0, panelHeight),
+		Position = UDim2.new(0, 10, 0, closedH + 4),
+		BackgroundTransparency = 1,
+	})
+	panel.Parent = holder
+
+	local svHeight = touch and (compact and 80 or 100) or (compact and 70 or 84)
+	local svSquare = create("Frame", {
+		Size = UDim2.new(1, 0, 0, svHeight),
+		BackgroundColor3 = Color3.fromHSV(hue, 1, 1),
+	}, { corner(10) })
+	svSquare.Parent = panel
+
+	local svGradient = create("UIGradient", {
+		Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromHSV(hue, 1, 1)),
+	})
+	svGradient.Parent = svSquare
+
+	local blackOverlay = create("Frame", {
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundColor3 = Color3.new(0, 0, 0),
+	}, { corner(10) })
+	blackOverlay.Parent = svSquare
+	create("UIGradient", {
+		Rotation = 90,
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(1, 0),
+		}),
+	}).Parent = blackOverlay
+
+	local svCursor = create("Frame", {
+		Size = UDim2.new(0, 10, 0, 10),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(sat, 0, 1 - val, 0),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		ZIndex = 3,
+	}, { corner(8), stroke(Color3.new(0, 0, 0), 1) })
+	svCursor.Parent = svSquare
+
+	local svHit = create("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), ZIndex = 4 })
+	svHit.Parent = svSquare
+
+	local hueStrip = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and (compact and 18 or 22) or (compact and 14 or 16)),
+		Position = UDim2.new(0, 0, 0, svHeight + 10),
+	}, { corner(10) })
+	hueStrip.Parent = panel
+
+	create("UIGradient", {
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromHSV(0, 1, 1)),
+			ColorSequenceKeypoint.new(1/6, Color3.fromHSV(1/6, 1, 1)),
+			ColorSequenceKeypoint.new(2/6, Color3.fromHSV(2/6, 1, 1)),
+			ColorSequenceKeypoint.new(3/6, Color3.fromHSV(3/6, 1, 1)),
+			ColorSequenceKeypoint.new(4/6, Color3.fromHSV(4/6, 1, 1)),
+			ColorSequenceKeypoint.new(5/6, Color3.fromHSV(5/6, 1, 1)),
+			ColorSequenceKeypoint.new(1, Color3.fromHSV(1, 1, 1)),
+		}),
+	}).Parent = hueStrip
+
+	local hueCursor = create("Frame", {
+		Size = UDim2.new(0, 6, 1, 4),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(hue, 0, 0.5, 0),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		ZIndex = 3,
+	}, { stroke(Color3.new(0, 0, 0), 1) })
+	hueCursor.Parent = hueStrip
+
+	local hueHit = create("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), ZIndex = 4 })
+	hueHit.Parent = hueStrip
+
+	local function updateColor()
+		color = Color3.fromHSV(hue, sat, val)
+		swatch.BackgroundColor3 = color
+		svSquare.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
+		svGradient.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromHSV(hue, 1, 1))
+		if config.Flag then Library:SetFlag(config.Flag, color) end
+		local ok, err = pcall(callback, color)
+		if not ok then warn("[MobileUILib] ColorPicker callback error: " .. tostring(err)) end
+	end
+
+	local draggingSV, draggingHue = false, false
+
+	svHit.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			draggingSV = true
+		end
+	end)
+	hueHit.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			draggingHue = true
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			draggingSV, draggingHue = false, false
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+		if draggingSV then
+			local relX = math.clamp((input.Position.X - svSquare.AbsolutePosition.X) / svSquare.AbsoluteSize.X, 0, 1)
+			local relY = math.clamp((input.Position.Y - svSquare.AbsolutePosition.Y) / svSquare.AbsoluteSize.Y, 0, 1)
+			sat, val = relX, 1 - relY
+			svCursor.Position = UDim2.new(relX, 0, relY, 0)
+			updateColor()
+		elseif draggingHue then
+			local relX = math.clamp((input.Position.X - hueStrip.AbsolutePosition.X) / hueStrip.AbsoluteSize.X, 0, 1)
+			hue = relX
+			hueCursor.Position = UDim2.new(relX, 0, 0.5, 0)
+			updateColor()
+		end
+	end)
+
+	swatch.MouseButton1Click:Connect(function()
+		open = not open
+		if self._window then
+			self._window:SetSpotlight(open)
+			shiftZIndex(holder, open and 50 or -50)
+		end
+		tween(holder, { Size = UDim2.new(1, 0, 0, open and (closedH + panelHeight + 8) or closedH) }, 0.2)
+	end)
+
+	local handle = {
+		Set = function(_, newColor)
+			hue, sat, val = newColor:ToHSV()
+			color = newColor
+			swatch.BackgroundColor3 = color
+			svCursor.Position = UDim2.new(sat, 0, 1 - val, 0)
+			hueCursor.Position = UDim2.new(hue, 0, 0.5, 0)
+			updateColor()
+		end,
+		Get = function() return color end,
+	}
+	if config.Flag then Library.FlagElements[config.Flag] = handle end
+	return handle
+end
+
+-- ===================== THEME EDITOR =====================
+function TM:CreateThemeEditor(config)
+	config = config or {}
+	local window = self._window
+
+	self:CreateLabel(config.Title or "Theme Editor")
+
+	self:CreateColorPicker({
+		Name = config.UIColorName or "UI Color",
+		Default = Theme.Background,
+		Keywords = { "theme", "background" },
+		Description = "Recolors the hub's main background",
+		Callback = function(color)
+			if window then window:SetThemeColor("Background", color) end		end,
+	})
+
+	self:CreateColorPicker({
+		Name = config.ToggleColorName or "Toggle Button Color",
+		Default = Theme.ToggleButton,
+		Keywords = { "theme", "float button", "toggle" },
+		Description = "Recolors the floating show/hide button",
+		Callback = function(color)
+			if window then window:SetThemeColor("ToggleButton", color) end
+		end,
+	})
+end
+
+-- ===================== DROPDOWN =====================
+function TM:CreateDropdown(config)
+	config = config or {}
+	local touch = self._touch
+	local compact = Library.Flags.CompactMode
+	local options = config.Options or {}
+	local selected = config.Default or options[1]
+	local callback = config.Callback or function() end
+	local open = false
+
+	local closedH = touch and (compact and 38 or 46) or (compact and 28 or 34)
+	local itemHeight = touch and (compact and 34 or 40) or (compact and 24 or 30)
+	local maxVisibleItems = 6
+	local totalHeight = #options * itemHeight
+	local panelHeight = math.min(totalHeight, maxVisibleItems * itemHeight)
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, closedH),
+		BackgroundColor3 = Theme.Element,
+		ClipsDescendants = true,
+		ZIndex = 2,
+	}, { corner(12), stroke() })
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Dropdown")
+
+	if config.Flag then Library:SetFlag(config.Flag, selected) end
+
+	local mainBtn = create("TextButton", {
+		Text = (config.Name or "Dropdown") .. ": " .. tostring(selected),
+		Font = Enum.Font.GothamMedium,
+		TextSize = touch and (compact and 13 or 15) or (compact and 11 or 13),
+		TextColor3 = Theme.Text,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, closedH),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 2,
+	}, {
+		create("UIPadding", { PaddingLeft = UDim.new(0, 12) }),
+	})
+	mainBtn.Parent = holder
+
+	local optionsFrame = create("ScrollingFrame", {
+		Size = UDim2.new(1, 0, 0, panelHeight),
+		Position = UDim2.new(0, 0, 0, closedH),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ScrollBarThickness = touch and 6 or 4,
+		CanvasSize = UDim2.new(0, 0, 0, totalHeight),
+		ZIndex = 2,
+	}, {
+		create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }),
+	})
+	optionsFrame.Parent = holder
+
+	for _, opt in ipairs(options) do
+		local optBtn = create("TextButton", {
+			Text = tostring(opt),
+			Font = Enum.Font.Gotham,
+			TextSize = touch and (compact and 12 or 14) or (compact and 10 or 12),
+			TextColor3 = Theme.SubText,
+			BackgroundColor3 = Theme.ElementHover,
+			Size = UDim2.new(1, 0, 0, itemHeight),
+			ZIndex = 2,
+		})
+		optBtn.Parent = optionsFrame
+
+		optBtn.MouseButton1Click:Connect(function()
+			selected = opt
+			mainBtn.Text = (config.Name or "Dropdown") .. ": " .. tostring(selected)
+			open = false
+			if self._window then
+				self._window:SetSpotlight(false)
+				shiftZIndex(holder, -50)
+			end
+			tween(holder, { Size = UDim2.new(1, 0, 0, closedH) }, 0.15)
+			if config.Flag then Library:SetFlag(config.Flag, selected) end
+			playInteractionSound("dropdown")
+			local ok, err = pcall(callback, selected)
+			if not ok then warn("[MobileUILib] Dropdown callback error: " .. tostring(err)) end
+		end)
+	end
+
+	mainBtn.MouseButton1Click:Connect(function()
+		open = not open
+		if self._window then
+			self._window:SetSpotlight(open)
+			shiftZIndex(holder, open and 50 or -50)
+		end
+		tween(holder, { Size = UDim2.new(1, 0, 0, open and (closedH + panelHeight) or closedH) }, 0.15)
+		playInteractionSound("dropdown")
+	end)
+
+	local handle = { Set = function(_, value)
+		selected = value
+		mainBtn.Text = (config.Name or "Dropdown") .. ": " .. tostring(selected)
+		if config.Flag then Library:SetFlag(config.Flag, selected) end
+	end }
+	if config.Flag then Library.FlagElements[config.Flag] = handle end
+	return handle
+end
+
+-- ===================== SEARCH =====================
+function TM:CreateSearch(config)
+	config = config or {}
+	local touch = self._touch
+	local compact = Library.Flags.CompactMode
+	local page = self._page
+
+	local box = create("TextBox", {
+		PlaceholderText = config.Placeholder or "Search...",
+		Text = "",
+		Font = Enum.Font.Gotham,
+		TextSize = touch and (compact and 13 or 15) or (compact and 11 or 13),
+		TextColor3 = Theme.Text,
+		PlaceholderColor3 = Theme.SubText,
+		BackgroundColor3 = Theme.Element,
+		Size = UDim2.new(1, 0, 0, touch and (compact and 34 or 42) or (compact and 26 or 32)),
+		ClearTextOnFocus = false,
+	}, {
+		corner(10), stroke(),
+		create("UIPadding", { PaddingLeft = UDim.new(0, 12) }),
+	})
+	box.Parent = page
+
+	local noResults = create("TextLabel", {
+		Text = "The searched feature is not available or removed",
+		Font = Enum.Font.Gotham,
+		TextSize = touch and (compact and 12 or 14) or (compact and 10 or 12),
+		TextColor3 = Theme.SubText,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 36),
+		TextWrapped = true,
+		Visible = false,
+	})
+	noResults.Parent = page
+
+	box:GetPropertyChangedSignal("Text"):Connect(function()
+		local query = box.Text:lower()
+		local anyVisible = false
+		local matchCount = 0
+		for _, child in ipairs(page:GetChildren()) do
+			if child:IsA("GuiObject") and child ~= box and child ~= noResults then
+				local haystack = child:GetAttribute("MUI_Search") or child:GetAttribute("MUI_Name")
+				if haystack then
+					local match = query == "" or haystack:lower():find(query, 1, true) ~= nil
+					child.Visible = match
+					if match then 
+						anyVisible = true 
+						matchCount = matchCount + 1
+					end
+				end
+			end
+		end
+		noResults.Visible = (query ~= "" and not anyVisible)
+		if query ~= "" and anyVisible then
+			box.PlaceholderText = matchCount .. " results"
+		else
+			box.PlaceholderText = config.Placeholder or "Search..."
+		end
+	end)
+
+	return box
+end
+
+-- ===================== DISCORD BUTTON =====================
+function TM:CreateDiscordButton(config)
+	config = config or {}
+	local touch = self._touch
+	local compact = Library.Flags.CompactMode
+	local invite = config.Invite or "discord.gg/your-invite"
+	local screenGui = self._screenGui
+
+	local btn = create("TextButton", {
+		Text = "",
+		BackgroundColor3 = Theme.Element,
+		Size = UDim2.new(1, 0, 0, touch and (compact and 38 or 46) or (compact and 28 or 34)),
+		AutoButtonColor = false,
+	}, { corner(12), stroke() })
+	btn.Parent = self._page
+	setSearchMeta(btn, config, "Join Discord")
+
+	create("TextLabel", {
+		Text = config.Name or "Join Discord",
+		Font = Enum.Font.GothamMedium,
+		TextSize = touch and (compact and 14 or 16) or (compact and 12 or 14),
+		TextColor3 = Theme.Text,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 1, 0),
+	}).Parent = btn
+
+	btn.MouseButton1Click:Connect(function()
+		ripple(btn, Theme.Accent)
+		if not screenGui then return end
+
+		local backdrop = create("Frame", {
+			Size = UDim2.new(1, 0, 1, 0),
+			BackgroundColor3 = Color3.new(0, 0, 0),
+			BackgroundTransparency = 1,
+			ZIndex = 200,
+			Active = true,
+		})
+		backdrop.Parent = screenGui
+		tween(backdrop, { BackgroundTransparency = 0.5 }, 0.2)
+
+		local popup = create("Frame", {
+			Size = UDim2.new(0, touch and 280 or 260, 0, 100),
+			Position = UDim2.new(0.5, 0, 0.5, 0),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			BackgroundColor3 = Theme.Header,
+			ZIndex = 201,
+		}, { corner(14), stroke(Theme.Accent, 1.5) })
+		popup.Parent = backdrop
+
+		create("TextLabel", {
+			Text = "Long-press the box, select all, then copy",
+			Font = Enum.Font.Gotham,
+			TextSize = touch and 12 or 11,
+			TextColor3 = Theme.SubText,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, -24, 0, 16),
+			Position = UDim2.new(0.5, 0, 0, 12),
+			AnchorPoint = Vector2.new(0.5, 0),
+			ZIndex = 201,
+		}).Parent = popup
+
+		create("TextBox", {
+			Text = invite,
+			Font = Enum.Font.GothamMedium,
+			TextSize = touch and 15 or 13,
+			TextColor3 = Theme.Text,
+			BackgroundColor3 = Theme.Element,
+			Size = UDim2.new(1, -24, 0, 38),
+			Position = UDim2.new(0.5, 0, 0, 36),
+			AnchorPoint = Vector2.new(0.5, 0),
+			ClearTextOnFocus = false,
+			ZIndex = 201,
+		}, { corner(8) }).Parent = popup
+
+		local closeBtn = create("TextButton", {
+			Text = "✕",
+			Font = Enum.Font.GothamBold,
+			TextSize = 14,
+			TextColor3 = Theme.SubText,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(0, 26, 0, 26),
+			Position = UDim2.new(1, -30, 0, 4),
+			ZIndex = 201,
+		})
+		closeBtn.Parent = popup
+
+		local function closePopup()
+			tween(backdrop, { BackgroundTransparency = 1 }, 0.15)
+			task.delay(0.15, function() backdrop:Destroy() end)
+		end
+		closeBtn.MouseButton1Click:Connect(closePopup)
+		backdrop.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				local mousePos = input.Position
+				local popupPos, popupSize = popup.AbsolutePosition, popup.AbsoluteSize
+				local insidePopup = mousePos.X >= popupPos.X and mousePos.X <= popupPos.X + popupSize.X
+					and mousePos.Y >= popupPos.Y and mousePos.Y <= popupPos.Y + popupSize.Y
+				if not insidePopup then closePopup() end
+			end
+		end)
+	end)
+
+	return btn
+end
+
+-- ===================== DIVIDER =====================
+function TM:CreateDivider(config)
+	config = config or {}
+	local touch = self._touch
+	local compact = Library.Flags.CompactMode
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, config.Name and (touch and (compact and 18 or 24) or (compact and 14 or 20)) or (touch and (compact and 6 or 10) or (compact and 4 or 8))),
+		BackgroundTransparency = 1,
+	})
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Divider")
+
+	if config.Name then
+		create("TextLabel", {
+			Text = config.Name,
+			Font = Enum.Font.GothamBold,
+			TextSize = touch and (compact and 10 or 12) or (compact and 8 or 10),
+			TextColor3 = Theme.SubText,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, touch and (compact and 12 or 16) or (compact and 10 or 14)),
+			TextXAlignment = Enum.TextXAlignment.Left,
+		}).Parent = holder
+	end
+
+	local line = create("Frame", {
+		Size = UDim2.new(1, 0, 0, 1),
+		Position = UDim2.new(0, 0, 1, -1),
+		BackgroundColor3 = Theme.Stroke,
+		BorderSizePixel = 0,
+	})
+	line.Parent = holder
+
+	return holder
+end
+
+-- ===================== CARD =====================
+function TM:CreateCard(config)
+	config = config or {}
+	local touch = self._touch
+	local compact = Library.Flags.CompactMode
+
+	local card = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and (compact and 32 or 40) or (compact and 24 or 30)),
+		BackgroundColor3 = Theme.Element,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, {
+		corner(14),
+		stroke(),
+		create("UIListLayout", {
+			Padding = UDim.new(0, compact and 4 or 6),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+		create("UIPadding", {
+			PaddingTop = UDim.new(0, compact and 6 or 10),
+			PaddingLeft = UDim.new(0, compact and 6 or 10),
+			PaddingRight = UDim.new(0, compact and 6 or 10),
+			PaddingBottom = UDim.new(0, compact and 6 or 10),
+		}),
+	})
+	card.Parent = self._page
+	setSearchMeta(card, config, "Card")
+
+	if config.Title then
+		create("TextLabel", {
+			Text = config.Title,
+			Font = Enum.Font.GothamBold,
+			TextSize = touch and (compact and 14 or 16) or (compact and 12 or 14),
+			TextColor3 = Theme.Text,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, touch and (compact and 18 or 22) or (compact and 14 or 18)),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			LayoutOrder = 0,
+		}).Parent = card
+	end
+
+	if config.Subtitle then
+		create("TextLabel", {
+			Text = config.Subtitle,
+			Font = Enum.Font.Gotham,
+			TextSize = touch and (compact and 11 or 13) or (compact and 9 or 11),
+			TextColor3 = Theme.SubText,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			TextWrapped = true,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			LayoutOrder = 1,
+		}).Parent = card
+	end
+
+	local Card = setmetatable({
+		_page = card,
+		_touch = touch,
+		_window = self._window,
+		_screenGui = self._screenGui,
+	}, { __index = Library.TabMethods })
+
+	return Card
+end
+
+-- ===================== PARAGRAPH =====================
+function TM:CreateParagraph(config)
+	config = config or {}
+	local touch = self._touch
+	local compact = Library.Flags.CompactMode
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and (compact and 32 or 40) or (compact and 24 or 30)),
+		BackgroundColor3 = Theme.Element,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, {
+		corner(12),
+		stroke(),
+		create("UIListLayout", {
+			Padding = UDim.new(0, compact and 2 or 4),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+		create("UIPadding", {
+			PaddingTop = UDim.new(0, compact and 6 or 10),
+			PaddingLeft = UDim.new(0, compact and 8 or 12),
+			PaddingRight = UDim.new(0, compact and 8 or 12),
+			PaddingBottom = UDim.new(0, compact and 6 or 10),
+		}),
+	})
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Paragraph")
+
+	if config.Title then
+		create("TextLabel", {
+			Text = config.Title,
+			Font = Enum.Font.GothamBold,
+			TextSize = touch and (compact and 13 or 15) or (compact and 11 or 13),
+			TextColor3 = Theme.Text,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, touch and (compact and 16 or 20) or (compact and 12 or 16)),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			LayoutOrder = 0,
+		}).Parent = holder
+	end
+
+	local body = create("TextLabel", {
+		Text = config.Text or config.Content or "",
+		Font = Enum.Font.Gotham,
+		TextSize = touch and (compact and 12 or 14) or (compact and 10 or 12),
+		TextColor3 = Theme.SubText,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		LayoutOrder = 1,
+	})
+	body.Parent = holder
+
+	return {
+		Set = function(_, text) body.Text = text end,
+		Get = function() return body.Text end,
+	}
+end
+
+-- ===================== IMAGE =====================
+function TM:CreateImage(config)
+	config = config or {}
+	local touch = self._touch
+	local compact = Library.Flags.CompactMode
+
+	local function normalizeAsset(id)
+		if type(id) == "number" then return "rbxassetid://" .. tostring(id) end
+		if type(id) == "string" and id ~= "" and not id:match("^rbxassetid://") and not id:match("^https?://") then
+			return "rbxassetid://" .. id
+		end
+		return id
+	end
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, config.Height or (touch and (compact and 120 or 160) or (compact and 100 or 140))),
+		BackgroundColor3 = Theme.Element,
+		ClipsDescendants = true,
+	}, { corner(12), stroke() })
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Image")
+
+	local img = create("ImageLabel", {
+		Image = normalizeAsset(config.Image or config.AssetId or config.Id) or "",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 1, 0),
+		ScaleType = config.ScaleType or Enum.ScaleType.Crop,
+	})
+	img.Parent = holder
+	img:SetAttribute("MUI_NoTheme", true)
+
+	if config.Name then
+		create("TextLabel", {
+			Text = config.Name,
+			Font = Enum.Font.GothamMedium,
+			TextSize = touch and (compact and 11 or 13) or (compact and 9 or 11),
+			TextColor3 = Color3.fromRGB(255, 255, 255),
+			BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+			BackgroundTransparency = 0.35,
+			Size = UDim2.new(1, 0, 0, touch and (compact and 20 or 26) or (compact and 16 or 22)),
+			Position = UDim2.new(0, 0, 1, touch and (compact and -20 or -26) or (compact and -16 or -22)),
+			TextXAlignment = Enum.TextXAlignment.Left,
+		}, {
+			create("UIPadding", { PaddingLeft = UDim.new(0, 8) }),
+		}).Parent = holder
+	end
+
+	return {
+		Set = function(_, newAsset) img.Image = normalizeAsset(newAsset) or "" end,
+		Get = function() return img.Image end,
+	}
+end
+
+-- ===================== PROGRESS BAR =====================
+function TM:CreateProgressBar(config)
+	config = config or {}
+	local touch = self._touch
+	local compact = Library.Flags.CompactMode
+	local min = config.Min or 0
+	local max = config.Max or 100
+	local value = math.clamp(config.Default or min, min, max)
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and (compact and 38 or 48) or (compact and 30 or 38)),
+		BackgroundColor3 = Theme.Element,
+	}, { corner(12), stroke() })
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Progress Bar")
+
+	create("TextLabel", {
+		Text = config.Name or "Progress",
+		Font = Enum.Font.GothamMedium,
+		TextSize = touch and (compact and 12 or 14) or (compact and 10 or 12),
+		TextColor3 = Theme.Text,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(0.6, 0, 0, touch and (compact and 14 or 18) or (compact and 10 or 14)),
+		Position = UDim2.new(0, 10, 0, compact and 2 or 6),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}).Parent = holder
+
+	local percentLabel = create("TextLabel", {
+		Text = "",
+		Font = Enum.Font.GothamBold,
+		TextSize = touch and (compact and 11 or 13) or (compact and 9 or 11),
+		TextColor3 = Theme.SubText,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(0.35, -10, 0, touch and (compact and 14 or 18) or (compact and 10 or 14)),
+		Position = UDim2.new(0.65, 0, 0, compact and 2 or 6),
+		TextXAlignment = Enum.TextXAlignment.Right,
+	})
+	percentLabel.Parent = holder
+
+	local track = create("Frame", {
+		Size = UDim2.new(1, -20, 0, touch and (compact and 6 or 10) or (compact and 4 or 8)),
+		Position = UDim2.new(0, 10, 1, touch and (compact and -12 or -16) or (compact and -10 or -14)),
+		BackgroundColor3 = Color3.fromRGB(55, 55, 62),
+	}, { corner(8) })
+	track.Parent = holder
+
+	local fill = create("Frame", {
+		Size = UDim2.new(0, 0, 1, 0),
+		BackgroundColor3 = Theme.Accent,
+	}, { corner(8) })
+	fill.Parent = track
+
+	local function render(v, animate)
+		v = math.clamp(v, min, max)
+		local relative = (max > min) and ((v - min) / (max - min)) or 0
+		percentLabel.Text = math.floor(relative * 100 + 0.5) .. "%"
+		if animate then
+			tween(fill, { Size = UDim2.new(relative, 0, 1, 0) }, 0.25)
+		else
+			fill.Size = UDim2.new(relative, 0, 1, 0)
+		end
+		return v
+	end
+	value = render(value, false)
+
+	local handle = {
+		Set = function(_, v)
+			value = render(v, true)
+			if config.Flag then Library:SetFlag(config.Flag, value) end
+		end,
+		Get = function() return value end,
+	}
+	if config.Flag then
+		Library:SetFlag(config.Flag, value)
+		Library.FlagElements[config.Flag] = handle
+	end
+	return handle
+end
+
+-- ===================== KEYBIND LIST =====================
+function TM:CreateKeybindList(config)
+	config = config or {}
+	local touch = self._touch
+	local compact = Library.Flags.CompactMode
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and (compact and 32 or 40) or (compact and 24 or 30)),
+		BackgroundColor3 = Theme.Element,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, {
+		corner(12),
+		stroke(),
+		create("UIListLayout", { Padding = UDim.new(0, compact and 2 or 4), SortOrder = Enum.SortOrder.LayoutOrder }),
+		create("UIPadding", {
+			PaddingTop = UDim.new(0, compact and 6 or 10), 
+			PaddingLeft = UDim.new(0, compact and 6 or 10),
+			PaddingRight = UDim.new(0, compact and 6 or 10), 
+			PaddingBottom = UDim.new(0, compact and 6 or 10),
+		}),
+	})
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Keybind List")
+
+	create("TextLabel", {
+		Text = config.Name or "Active Keybinds",
+		Font = Enum.Font.GothamBold,
+		TextSize = touch and (compact and 12 or 14) or (compact and 10 or 12),
+		TextColor3 = Theme.SubText,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, touch and (compact and 14 or 18) or (compact and 10 or 15)),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = 0,
+	}).Parent = holder
+
+	local emptyLabel = create("TextLabel", {
+		Text = "No keybinds registered",
+		Font = Enum.Font.Gotham,
+		TextSize = touch and (compact and 11 or 13) or (compact and 9 or 11),
+		TextColor3 = Theme.SubText,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, touch and (compact and 14 or 18) or (compact and 10 or 15)),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = 1,
+	})
+
+	local rowFrames = {}
+	local rowLabels = {}
+
+	local function keyText(descriptor)
+		local ok, key = pcall(descriptor.Get)
+		if not ok or not key or key == Enum.KeyCode.Unknown then return "Unbound" end
+		return key.Name
+	end
+
+	local function addRow(descriptor)
+		if emptyLabel.Parent then emptyLabel.Parent = nil end
+
+		local row = create("Frame", {
+			Size = UDim2.new(1, 0, 0, touch and (compact and 18 or 22) or (compact and 14 or 18)),
+			BackgroundTransparency = 1,
+		})
+		row.Parent = holder
+
+		create("TextLabel", {
+			Text = descriptor.Name,
+			Font = Enum.Font.Gotham,
+			TextSize = touch and (compact and 11 or 13) or (compact and 9 or 11),
+			TextColor3 = Theme.Text,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(0.6, 0, 1, 0),
+			TextXAlignment = Enum.TextXAlignment.Left,
+		}).Parent = row
+
+		local keyLabel = create("TextLabel", {
+			Text = keyText(descriptor),
+			Font = Enum.Font.GothamBold,
+			TextSize = touch and (compact and 11 or 13) or (compact and 9 or 11),
+			TextColor3 = Theme.Accent,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(0.4, 0, 1, 0),
+			TextXAlignment = Enum.TextXAlignment.Right,
+		})
+		keyLabel.Parent = row
+
+		rowFrames[descriptor] = row
+		rowLabels[descriptor] = keyLabel
+	end
+
+	local function removeRow(descriptor)
+		local row = rowFrames[descriptor]
+		if row then row:Destroy() end
+		rowFrames[descriptor] = nil
+		rowLabels[descriptor] = nil
+		if next(rowFrames) == nil then
+			emptyLabel.Parent = holder
+		end
+	end
+
+	local function rebuildAll()
+		for descriptor in pairs(rowFrames) do removeRow(descriptor) end
+		for _, descriptor in ipairs(Library.Keybinds) do addRow(descriptor) end
+		if #Library.Keybinds == 0 then emptyLabel.Parent = holder end
+	end
+
+	rebuildAll()
+
+	local registeredConn = Library.KeybindRegistered:Connect(addRow)
+	local changedConn = Library.KeybindChanged:Connect(function(descriptor)
+		local keyLabel = rowLabels[descriptor]
+		if keyLabel then keyLabel.Text = keyText(descriptor) end
+	end)
+	local unregisteredConn = Library.KeybindUnregistered:Connect(removeRow)
+
+	holder.AncestryChanged:Connect(function(_, parent)
+		if not parent then
+			if registeredConn then registeredConn:Disconnect() end
+			if changedConn then changedConn:Disconnect() end
+			if unregisteredConn then unregisteredConn:Disconnect() end
+		end
+	end)
+
+	return Library:_wrapElement(holder, { Refresh = function(_) rebuildAll() end })
+end
+
+-- ===================== COLOR GRADIENT =====================
+function TM:CreateColorGradient(config)
+	config = config or {}
+	local touch = self._touch
+	local compact = Library.Flags.CompactMode
+
+	local stops = config.Stops or { Color3.fromRGB(255, 196, 48), Color3.fromRGB(255, 90, 90) }
+	if #stops < 2 then
+		stops = { stops[1] or Color3.fromRGB(255, 255, 255), Color3.fromRGB(0, 0, 0) }
+	end
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and (compact and 32 or 40) or (compact and 24 or 30)),
+		BackgroundColor3 = Theme.Element,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, {
+		corner(12),
+		stroke(),
+		create("UIListLayout", { Padding = UDim.new(0, compact and 4 or 8), SortOrder = Enum.SortOrder.LayoutOrder }),
+		create("UIPadding", {
+			PaddingTop = UDim.new(0, compact and 6 or 10), 
+			PaddingLeft = UDim.new(0, compact and 6 or 10),
+			PaddingRight = UDim.new(0, compact and 6 or 10), 
+			PaddingBottom = UDim.new(0, compact and 6 or 10),
+		}),
+	})
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Color Gradient")
+
+	-- Preset button
+	local presetRow = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and (compact and 28 or 34) or (compact and 20 or 26)),
+		BackgroundTransparency = 1,
+		LayoutOrder = 0,
+	})
+	presetRow.Parent = holder
+
+	local presets = {
+		["Rainbow"] = {Color3.fromRGB(255,0,0), Color3.fromRGB(255,255,0), Color3.fromRGB(0,255,0), Color3.fromRGB(0,255,255), Color3.fromRGB(255,0,255)},
+		["Sunset"] = {Color3.fromRGB(255,100,0), Color3.fromRGB(255,200,0), Color3.fromRGB(255,255,0)},
+		["Ocean"] = {Color3.fromRGB(0,100,200), Color3.fromRGB(0,200,255), Color3.fromRGB(100,255,255)},
+		["Forest"] = {Color3.fromRGB(0,100,0), Color3.fromRGB(0,200,50), Color3.fromRGB(50,255,100)},
+		["Fire"] = {Color3.fromRGB(255,0,0), Color3.fromRGB(255,100,0), Color3.fromRGB(255,200,0)},
+		["Ice"] = {Color3.fromRGB(100,200,255), Color3.fromRGB(150,220,255), Color3.fromRGB(200,240,255)},
+	}
+
+	local presetDropdown = create("TextButton", {
+		Text = "Presets ▼",
+		Font = Enum.Font.Gotham,
+		TextSize = touch and (compact and 11 or 12) or (compact and 9 or 10),
+		TextColor3 = Theme.SubText,
+		BackgroundColor3 = Theme.ElementHover,
+		Size = UDim2.new(0, 80, 1, 0),
+	}, { corner(6) })
+	presetDropdown.Parent = presetRow
+	presetDropdown.MouseButton1Click:Connect(function()
+		local presetsList = {}
+		for name in pairs(presets) do table.insert(presetsList, name) end
+		local dropdown = Tab:CreateDropdown({
+			Name = "Select Preset",
+			Options = presetsList,
+			Callback = function(selected)
+				local colors = presets[selected]
+				if colors then
+					handle:Set(colors)
+				end
+			end
+		})
+	end)
+
+	create("TextLabel", {
+		Text = config.Name or "Gradient",
+		Font = Enum.Font.GothamBold,
+		TextSize = touch and (compact and 13 or 15) or (compact and 11 or 13),
+		TextColor3 = Theme.Text,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, -90, 0, touch and (compact and 16 or 20) or (compact and 12 or 16)),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = 0,
+	}).Parent = holder
+
+	local preview = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and (compact and 24 or 32) or (compact and 18 or 26)),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		LayoutOrder = 1,
+	}, { corner(8), stroke() })
+	preview.Parent = holder
+
+	local function buildSequence(colors)
+		if #colors < 2 then return ColorSequence.new(colors[1] or Color3.new(1, 1, 1)) end
+		local keypoints = {}
+		for i, c in ipairs(colors) do
+			table.insert(keypoints, ColorSequenceKeypoint.new((i - 1) / (#colors - 1), c))
+		end
+		return ColorSequence.new(keypoints)
+	end
+
+	local previewGradient = create("UIGradient", { Color = buildSequence(stops) })
+	previewGradient.Parent = preview
+
+	local GradientPage = setmetatable({
+		_page = holder,
+		_touch = touch,
+		_window = self._window,
+		_screenGui = self._screenGui,
+	}, { __index = Library.TabMethods })
+
+	local pickers = {}
+
+	local function currentColors()
+		local colors = {}
+		for _, picker in ipairs(pickers) do table.insert(colors, picker:Get()) end
+		return colors
+	end
+
+	for i, startColor in ipairs(stops) do
+		local picker = GradientPage:CreateColorPicker({
+			Name = "Stop " .. i,
+			Default = startColor,
+			Callback = function()
+				local colors = currentColors()
+				previewGradient.Color = buildSequence(colors)
+				if config.Flag then Library:SetFlag(config.Flag, colors) end
+				if config.Callback then
+					local ok, err = pcall(config.Callback, buildSequence(colors), colors)
+					if not ok then warn("[MobileUILib] ColorGradient callback error: " .. tostring(err)) end
+				end
+			end,
+		})
+		table.insert(pickers, picker)
+	end
+
+	local handle = {
+		Set = function(_, newStops)
+			for i, picker in ipairs(pickers) do
+				if newStops[i] then picker:Set(newStops[i]) end
+			end
+			local colors = currentColors()
+			previewGradient.Color = buildSequence(colors)
+			if config.Flag then Library:SetFlag(config.Flag, colors) end
+		end,
+		Get = function() return currentColors() end,
+		GetSequence = function() return buildSequence(currentColors()) end,
+	}
+	if config.Flag then
+		Library:SetFlag(config.Flag, currentColors())
+		Library.FlagElements[config.Flag] = handle
+	end
+	return handle
+end
+
+-- ===================== NOTIFICATION CENTER =====================
+function TM:CreateNotificationCenter(config)
+	config = config or {}
+	local touch = self._touch
+	local compact = Library.Flags.CompactMode
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and (compact and 38 or 46) or (compact and 28 or 34)),
+		BackgroundColor3 = Theme.Element,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, { corner(12), stroke() })
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Notification Center")
+
+	local headerRow = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and (compact and 28 or 34) or (compact and 22 or 28)),
+		BackgroundTransparency = 1,
+	})
+	headerRow.Parent = holder
+
+	create("TextLabel", {
+		Text = config.Name or "Notifications",
+		Font = Enum.Font.GothamBold,
+		TextSize = touch and (compact and 12 or 14) or (compact and 10 or 12),
+		TextColor3 = Theme.Text,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, -70, 1, 0),
+		Position = UDim2.new(0, 10, 0, 0),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}).Parent = headerRow
+
+	local clearBtn = create("TextButton", {
+		Text = "Clear",
+		Font = Enum.Font.GothamMedium,
+		TextSize = touch and (compact and 10 or 12) or (compact and 8 or 11),
+		TextColor3 = Theme.SubText,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(0, 56, 1, 0),
+		Position = UDim2.new(1, -60, 0, 0),
+	})
+	clearBtn.Parent = headerRow
+
+	local list = create("Frame", {
+		Size = UDim2.new(1, -16, 0, 0),
+		Position = UDim2.new(0, 8, 0, touch and (compact and 30 or 36) or (compact and 24 or 30)),
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, {
+		create("UIListLayout", { Padding = UDim.new(0, compact and 2 or 4), SortOrder = Enum.SortOrder.LayoutOrder }),
+		create("UIPadding", { PaddingBottom = UDim.new(0, compact and 4 or 8) }),
+	})
+	list.Parent = holder
+
+	local typeColors = {
+		success = Color3.fromRGB(70, 200, 110),
+		error = Color3.fromRGB(230, 75, 75),
+		warning = Color3.fromRGB(255, 175, 45),
+		info = Theme.Accent,
+	}
+
+	local emptyLabel = create("TextLabel", {
+		Text = "No notifications yet",
+		Font = Enum.Font.Gotham,
+		TextSize = touch and (compact and 11 or 13) or (compact and 9 or 11),
+		TextColor3 = Theme.SubText,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 24),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	})
+
+	local rowHeight = touch and (compact and 44 or 54) or (compact and 36 or 44)
+
+	local function addRow(entry)
+		if emptyLabel.Parent then emptyLabel.Parent = nil end
+
+		local row = create("Frame", {
+			Size = UDim2.new(1, 0, 0, rowHeight),
+			BackgroundColor3 = Theme.ElementHover,
+			LayoutOrder = -entry.Seq,
+		}, {
+			corner(8),
+			create("UIPadding", {
+				PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 8),
+				PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6),
+			}),
+		})
+		row.Parent = list
+
+		create("Frame", {
+			Size = UDim2.new(0, 3, 1, 0),
+			Position = UDim2.new(0, -8, 0, 0),
+			BackgroundColor3 = typeColors[entry.Type] or Theme.Stroke,
+			BorderSizePixel = 0,
+		}, { corner(2) }).Parent = row
+
+		create("TextLabel", {
+			Text = entry.Title,
+			Font = Enum.Font.GothamMedium,
+			TextSize = touch and (compact and 11 or 13) or (compact and 9 or 11),
+			TextColor3 = Theme.Text,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, -56, 0, touch and (compact and 12 or 16) or (compact and 10 or 14)),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+		}).Parent = row
+
+		create("TextLabel", {
+			Text = entry.Content,
+			Font = Enum.Font.Gotham,
+			TextSize = touch and (compact and 10 or 12) or (compact and 8 or 10),
+			TextColor3 = Theme.SubText,
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0, 0, 0, touch and (compact and 14 or 18) or (compact and 11 or 15)),
+			Size = UDim2.new(1, 0, 0, touch and (compact and 12 or 16) or (compact and 10 or 14)),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+		}).Parent = row
+
+		create("TextLabel", {
+			Text = os.date("%H:%M:%S", entry.Time),
+			Font = Enum.Font.Gotham,
+			TextSize = touch and (compact and 8 or 10) or (compact and 7 or 9),
+			TextColor3 = Theme.SubText,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(0, 54, 0, 12),
+			Position = UDim2.new(1, -54, 0, 0),
+			TextXAlignment = Enum.TextXAlignment.Right,
+		}).Parent = row
+	end
+
+	for _, entry in ipairs(Library.NotificationHistory) do
+		addRow(entry)
+	end
+	if #Library.NotificationHistory == 0 then
+		emptyLabel.Parent = list
+	end
+
+	local logConn = Library.NotificationLogged:Connect(addRow)
+
+	clearBtn.MouseButton1Click:Connect(function()
+		Library.NotificationHistory = {}
+		for _, child in ipairs(list:GetChildren()) do
+			if child:IsA("Frame") then child:Destroy() end
+		end
+		emptyLabel.Parent = list
+	end)
+
+	holder.AncestryChanged:Connect(function(_, parent)
+		if not parent and logConn then logConn:Disconnect() end
+	end)
+
+	return holder
+end
+
+-- ===================== TIMER =====================
+function TM:CreateTimer(config)
+    config = config or {}
+    local touch = self._touch
+	local compact = Library.Flags.CompactMode
+    local duration = config.Duration or 60
+    local remaining = duration
+    local running = false
+    local paused = false
+
+    local holder = create("Frame", {
+        Size = UDim2.new(1, 0, 0, touch and (compact and 60 or 80) or (compact and 44 or 60)),
+        BackgroundColor3 = Theme.Element,
+        AutomaticSize = Enum.AutomaticSize.Y,
+    }, { corner(12), stroke() })
+    holder.Parent = self._page
+    setSearchMeta(holder, config, "Timer")
+
+    local timeDisplay = create("TextLabel", {
+        Text = string.format("%02d:%02d", remaining // 60, remaining % 60),
+        Font = Enum.Font.GothamBold,
+        TextSize = touch and (compact and 26 or 32) or (compact and 20 or 26),
+        TextColor3 = Theme.Text,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, touch and (compact and 28 or 36) or (compact and 20 or 28)),
+        TextXAlignment = Enum.TextXAlignment.Center,
+    })
+    timeDisplay.Parent = holder
+
+    local btnRow = create("Frame", {
+        Size = UDim2.new(1, 0, 0, touch and (compact and 28 or 34) or (compact and 20 or 26)),
+        Position = UDim2.new(0, 0, 1, touch and (compact and -28 or -34) or (compact and -20 or -26)),
+        BackgroundTransparency = 1,
+    }, {
+        create("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            Padding = UDim.new(0, 6),
+            HorizontalAlignment = Enum.HorizontalAlignment.Center,
+        }),
+    })
+    btnRow.Parent = holder
+
+    local function updateDisplay()
+        timeDisplay.Text = string.format("%02d:%02d", remaining // 60, remaining % 60)
+    end
+
+    local function resetTimer()
+        running = false
+        paused = false
+        remaining = duration
+        updateDisplay()
+        if config.Callback then
+            pcall(config.Callback, "reset", remaining)
+        end
+    end
+
+    local function togglePause()
+        if not running then
+            running = true
+            paused = false
+            if config.Callback then
+                pcall(config.Callback, "start", remaining)
+            end
+        else
+            paused = not paused
+            if config.Callback then
+                pcall(config.Callback, paused and "pause" or "resume", remaining)
+            end
+        end
+    end
+
+    local startBtn = create("TextButton", {
+        Text = "▶",
+        Font = Enum.Font.GothamBold,
+        TextSize = touch and (compact and 14 or 16) or (compact and 12 or 14),
+        TextColor3 = Theme.Text,
+        BackgroundColor3 = Theme.ElementHover,
+        Size = UDim2.new(0, touch and (compact and 50 or 60) or (compact and 40 or 50), 1, 0),
+    }, { corner(8) })
+    startBtn.Parent = btnRow
+
+    local resetBtn = create("TextButton", {
+        Text = "⟳",
+        Font = Enum.Font.GothamBold,
+        TextSize = touch and (compact and 14 or 16) or (compact and 12 or 14),
+        TextColor3 = Theme.Text,
+        BackgroundColor3 = Theme.ElementHover,
+        Size = UDim2.new(0, touch and (compact and 50 or 60) or (compact and 40 or 50), 1, 0),
+    }, { corner(8) })
+    resetBtn.Parent = btnRow
+
+    startBtn.MouseButton1Click:Connect(togglePause)
+    resetBtn.MouseButton1Click:Connect(resetTimer)
+
+    local connection
+    local function startTimerLoop()
+        if connection then connection:Disconnect() end
+        connection = RunService.Heartbeat:Connect(function(delta)
+            if running and not paused and remaining > 0 then
+                remaining = remaining - delta
+                if remaining <= 0 then
+                    remaining = 0
+                    running = false
+                    if config.Callback then
+                        pcall(config.Callback, "complete", remaining)
+                    end
+                end
+                updateDisplay()
+                startBtn.Text = paused and "▶" or "⏸"
+            end
+        end)
+    end
+    startTimerLoop()
+
+    local handle = {
+        Set = function(_, newDuration)
+            duration = newDuration
+            remaining = newDuration
+            resetTimer()
+        end,
+        Get = function() return remaining end,
+        Reset = resetTimer,
+        Start = function()
+            running = true
+            paused = false
+            startBtn.Text = "⏸"
+        end,
+        Pause = function()
+            paused = true
+            startBtn.Text = "▶"
+        end,
+        Resume = function()
+            paused = false
+            startBtn.Text = "⏸"
+        end,
+		Destroy = function()
+			if connection then connection:Disconnect() end
+			if holder then holder:Destroy() end
+		end,
+    }
+
+    holder.AncestryChanged:Connect(function(_, parent)
+        if not parent and connection then
+            connection:Disconnect()
+        end
+    end)
+
+    return Library:_wrapElement(holder, handle)
+end
+
+-- ===================== CHECKLIST =====================
+function TM:CreateChecklist(config)
+    config = config or {}
+    local touch = self._touch
+	local compact = Library.Flags.CompactMode
+    local items = config.Items or {}
+
+    local holder = create("Frame", {
+        Size = UDim2.new(1, 0, 0, touch and (compact and 32 or 40) or (compact and 24 or 30)),
+        BackgroundColor3 = Theme.Element,
+        AutomaticSize = Enum.AutomaticSize.Y,
+    }, { corner(12), stroke() })
+    holder.Parent = self._page
+    setSearchMeta(holder, config, "Checklist")
+
+    create("TextLabel", {
+        Text = config.Name or "Checklist",
+        Font = Enum.Font.GothamBold,
+        TextSize = touch and (compact and 13 or 15) or (compact and 11 or 13),
+        TextColor3 = Theme.Text,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, touch and (compact and 18 or 24) or (compact and 14 or 18)),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        LayoutOrder = 0,
+    }).Parent = holder
+
+    local list = create("Frame", {
+        Size = UDim2.new(1, -10, 0, 0),
+        Position = UDim2.new(0, 5, 0, touch and (compact and 22 or 28) or (compact and 18 or 22)),
+        BackgroundTransparency = 1,
+        AutomaticSize = Enum.AutomaticSize.Y,
+    }, {
+        create("UIListLayout", {
+            Padding = UDim.new(0, compact and 2 or 4),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+        }),
+        create("UIPadding", {
+            PaddingBottom = UDim.new(0, compact and 4 or 6),
+        }),
+    })
+    list.Parent = holder
+
+    local checkStates = {}
+    local checkboxes = {}
+
+    local function updateProgress()
+        local total = #items
+        local done = 0
+        for _, state in pairs(checkStates) do
+            if state then done = done + 1 end
+        end
+        if config.Callback then
+            pcall(config.Callback, done, total, checkStates)
+        end
+    end
+
+    for i, item in ipairs(items) do
+        local row = create("Frame", {
+            Size = UDim2.new(1, 0, 0, touch and (compact and 22 or 28) or (compact and 18 or 22)),
+            BackgroundTransparency = 1,
+            LayoutOrder = i,
+        }, {
+            create("UIListLayout", {
+                FillDirection = Enum.FillDirection.Horizontal,
+                Padding = UDim.new(0, 8),
+                VerticalAlignment = Enum.VerticalAlignment.Center,
+            }),
+        })
+        row.Parent = list
+
+        local checkBtn = create("TextButton", {
+            Text = "□",
+            Font = Enum.Font.GothamBold,
+            TextSize = touch and (compact and 16 or 18) or (compact and 14 or 16),
+            TextColor3 = Theme.SubText,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0, touch and (compact and 20 or 24) or (compact and 16 or 20), 1, 0),
+        })
+        checkBtn.Parent = row
+
+        local label = create("TextLabel", {
+            Text = item,
+            Font = Enum.Font.Gotham,
+            TextSize = touch and (compact and 12 or 14) or (compact and 10 or 12),
+            TextColor3 = Theme.Text,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 1, 0),
+            TextXAlignment = Enum.TextXAlignment.Left,
+        })
+        label.Parent = row
+
+        checkStates[i] = false
+        checkboxes[i] = checkBtn
+
+        checkBtn.MouseButton1Click:Connect(function()
+            checkStates[i] = not checkStates[i]
+            checkBtn.Text = checkStates[i] and "☑" or "□"
+            checkBtn.TextColor3 = checkStates[i] and Theme.Accent or Theme.SubText
+            updateProgress()
+        end)
+    end
+
+    local handle = {
+        Set = function(_, states)
+            for i, state in ipairs(states) do
+                if checkboxes[i] then
+                    checkStates[i] = state
+                    checkboxes[i].Text = state and "☑" or "□"
+                    checkboxes[i].TextColor3 = state and Theme.Accent or Theme.SubText
+                end
+            end
+            updateProgress()
+        end,
+        Get = function() return checkStates end,
+        Toggle = function(index)
+            if checkboxes[index] then
+                checkStates[index] = not checkStates[index]
+                checkboxes[index].Text = checkStates[index] and "☑" or "□"
+                checkboxes[index].TextColor3 = checkStates[index] and Theme.Accent or Theme.SubText
+                updateProgress()
+            end
+        end,
+        Reset = function()
+            for i in pairs(checkStates) do
+                checkStates[i] = false
+                checkboxes[i].Text = "□"
+                checkboxes[i].TextColor3 = Theme.SubText
+            end
+            updateProgress()
+        end,
+    }
+
+    return Library:_wrapElement(holder, handle)
+end
 -- ===================== RETURN =====================
 return Library
