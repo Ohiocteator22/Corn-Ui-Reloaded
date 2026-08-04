@@ -4238,5 +4238,770 @@ function TM:CreateChecklist(config)
 
     return Library:_wrapElement(holder, handle)
 end
+-- ===================== RADIO BUTTON GROUP =====================
+function TM:CreateRadioGroup(config)
+	config = config or {}
+	local touch = self._touch
+	local compact = Library.Flags.CompactMode
+	local options = config.Options or {}
+	local selected = config.Default or options[1]
+	local callback = config.Callback or function() end
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and (compact and 32 or 40) or (compact and 24 or 30)),
+		BackgroundColor3 = Theme.Element,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, { corner(12), stroke() })
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Radio Group")
+
+	if config.Flag then Library:SetFlag(config.Flag, selected) end
+
+	create("TextLabel", {
+		Text = config.Name or "Select Option",
+		Font = Enum.Font.GothamBold,
+		TextSize = touch and (compact and 13 or 15) or (compact and 11 or 13),
+		TextColor3 = Theme.Text,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, touch and (compact and 18 or 24) or (compact and 14 or 18)),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = 0,
+	}).Parent = holder
+
+	local list = create("Frame", {
+		Size = UDim2.new(1, -10, 0, 0),
+		Position = UDim2.new(0, 5, 0, touch and (compact and 22 or 28) or (compact and 18 or 22)),
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, {
+		create("UIListLayout", {
+			Padding = UDim.new(0, compact and 2 or 4),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+		create("UIPadding", {
+			PaddingBottom = UDim.new(0, compact and 4 or 6),
+		}),
+	})
+	list.Parent = holder
+
+	local radioButtons = {}
+
+	for i, opt in ipairs(options) do
+		local row = create("Frame", {
+			Size = UDim2.new(1, 0, 0, touch and (compact and 24 or 30) or (compact and 18 or 24)),
+			BackgroundTransparency = 1,
+			LayoutOrder = i,
+		}, {
+			create("UIListLayout", {
+				FillDirection = Enum.FillDirection.Horizontal,
+				Padding = UDim.new(0, 8),
+				VerticalAlignment = Enum.VerticalAlignment.Center,
+			}),
+		})
+		row.Parent = list
+
+		local radioBtn = create("TextButton", {
+			Text = (opt == selected) and "◉" or "○",
+			Font = Enum.Font.GothamBold,
+			TextSize = touch and (compact and 18 or 20) or (compact and 16 or 18),
+			TextColor3 = (opt == selected) and Theme.Accent or Theme.SubText,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(0, touch and (compact and 22 or 26) or (compact and 18 or 22), 1, 0),
+		})
+		radioBtn.Parent = row
+
+		local label = create("TextLabel", {
+			Text = tostring(opt),
+			Font = Enum.Font.Gotham,
+			TextSize = touch and (compact and 12 or 14) or (compact and 10 or 12),
+			TextColor3 = (opt == selected) and Theme.Text or Theme.SubText,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 1, 0),
+			TextXAlignment = Enum.TextXAlignment.Left,
+		})
+		label.Parent = row
+
+		radioButtons[opt] = { btn = radioBtn, label = label }
+
+		radioBtn.MouseButton1Click:Connect(function()
+			if opt == selected then return end
+			
+			for oldOpt, data in pairs(radioButtons) do
+				data.btn.Text = "○"
+				data.btn.TextColor3 = Theme.SubText
+				data.label.TextColor3 = Theme.SubText
+			end
+			
+			selected = opt
+			radioBtn.Text = "◉"
+			radioBtn.TextColor3 = Theme.Accent
+			label.TextColor3 = Theme.Text
+			
+			if config.Flag then Library:SetFlag(config.Flag, selected) end
+			playInteractionSound("click")
+			local ok, err = pcall(callback, selected)
+			if not ok then warn("[MobileUILib] RadioGroup callback error: " .. tostring(err)) end
+		end)
+	end
+
+	local handle = {
+		Set = function(_, value)
+			if not radioButtons[value] then return end
+			for oldOpt, data in pairs(radioButtons) do
+				data.btn.Text = "○"
+				data.btn.TextColor3 = Theme.SubText
+				data.label.TextColor3 = Theme.SubText
+			end
+			selected = value
+			radioButtons[value].btn.Text = "◉"
+			radioButtons[value].btn.TextColor3 = Theme.Accent
+			radioButtons[value].label.TextColor3 = Theme.Text
+			if config.Flag then Library:SetFlag(config.Flag, selected) end
+		end,
+		Get = function() return selected end,
+	}
+	if config.Flag then Library.FlagElements[config.Flag] = handle end
+	return Library:_wrapElement(holder, handle)
+end
+
+-- ===================== MULTI-SELECT DROPDOWN =====================
+function TM:CreateMultiDropdown(config)
+	config = config or {}
+	local touch = self._touch
+	local compact = Library.Flags.CompactMode
+	local options = config.Options or {}
+	local selected = config.Default or {}
+	if type(selected) ~= "table" then selected = {} end
+	local callback = config.Callback or function() end
+	local open = false
+
+	local closedH = touch and (compact and 38 or 46) or (compact and 28 or 34)
+	local itemHeight = touch and (compact and 34 or 40) or (compact and 24 or 30)
+	local maxVisibleItems = 6
+	local totalHeight = #options * itemHeight
+	local panelHeight = math.min(totalHeight, maxVisibleItems * itemHeight)
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, closedH),
+		BackgroundColor3 = Theme.Element,
+		ClipsDescendants = true,
+		ZIndex = 2,
+	}, { corner(12), stroke() })
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Multi-Select")
+
+	if config.Flag then Library:SetFlag(config.Flag, selected) end
+
+	local selectedText = #selected > 0 and table.concat(selected, ", ") or "None selected"
+	local mainBtn = create("TextButton", {
+		Text = (config.Name or "Select") .. ": " .. selectedText,
+		Font = Enum.Font.GothamMedium,
+		TextSize = touch and (compact and 12 or 14) or (compact and 10 or 12),
+		TextColor3 = Theme.Text,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, closedH),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		ZIndex = 2,
+	}, {
+		create("UIPadding", { PaddingLeft = UDim.new(0, 12) }),
+	})
+	mainBtn.Parent = holder
+
+	local optionsFrame = create("ScrollingFrame", {
+		Size = UDim2.new(1, 0, 0, panelHeight),
+		Position = UDim2.new(0, 0, 0, closedH),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ScrollBarThickness = touch and 6 or 4,
+		CanvasSize = UDim2.new(0, 0, 0, totalHeight),
+		ZIndex = 2,
+	}, {
+		create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }),
+	})
+	optionsFrame.Parent = holder
+
+	local optionStates = {}
+
+	for _, opt in ipairs(options) do
+		local isSelected = false
+		for _, s in ipairs(selected) do
+			if s == opt then isSelected = true break end
+		end
+		optionStates[opt] = isSelected
+
+		local optBtn = create("TextButton", {
+			Text = (isSelected and "☑ " or "☐ ") .. tostring(opt),
+			Font = Enum.Font.Gotham,
+			TextSize = touch and (compact and 12 or 14) or (compact and 10 or 12),
+			TextColor3 = isSelected and Theme.Accent or Theme.SubText,
+			BackgroundColor3 = Theme.ElementHover,
+			Size = UDim2.new(1, 0, 0, itemHeight),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = 2,
+		}, {
+			create("UIPadding", { PaddingLeft = UDim.new(0, 8) }),
+		})
+		optBtn.Parent = optionsFrame
+
+		optBtn.MouseButton1Click:Connect(function()
+			optionStates[opt] = not optionStates[opt]
+			local isNowSelected = optionStates[opt]
+			optBtn.Text = (isNowSelected and "☑ " or "☐ ") .. tostring(opt)
+			optBtn.TextColor3 = isNowSelected and Theme.Accent or Theme.SubText
+			
+			selected = {}
+			for o, s in pairs(optionStates) do
+				if s then table.insert(selected, o) end
+			end
+			
+			local selectedTextNew = #selected > 0 and table.concat(selected, ", ") or "None selected"
+			mainBtn.Text = (config.Name or "Select") .. ": " .. selectedTextNew
+			
+			if config.Flag then Library:SetFlag(config.Flag, selected) end
+			playInteractionSound("click")
+			local ok, err = pcall(callback, selected)
+			if not ok then warn("[MobileUILib] MultiDropdown callback error: " .. tostring(err)) end
+		end)
+	end
+
+	mainBtn.MouseButton1Click:Connect(function()
+		open = not open
+		if self._window then
+			self._window:SetSpotlight(open)
+			shiftZIndex(holder, open and 50 or -50)
+		end
+		tween(holder, { Size = UDim2.new(1, 0, 0, open and (closedH + panelHeight) or closedH) }, 0.15)
+		playInteractionSound("dropdown")
+	end)
+
+	local handle = {
+		Set = function(_, newSelected)
+			if type(newSelected) ~= "table" then newSelected = {} end
+			selected = newSelected
+			for opt, btn in pairs(optionStates) do
+				local isSelected = false
+				for _, s in ipairs(selected) do
+					if s == opt then isSelected = true break end
+				end
+				optionStates[opt] = isSelected
+				for _, child in ipairs(optionsFrame:GetChildren()) do
+					if child:IsA("TextButton") and child.Text:match(tostring(opt)) then
+						child.Text = (isSelected and "☑ " or "☐ ") .. tostring(opt)
+						child.TextColor3 = isSelected and Theme.Accent or Theme.SubText
+					end
+				end
+			end
+			local selectedTextNew = #selected > 0 and table.concat(selected, ", ") or "None selected"
+			mainBtn.Text = (config.Name or "Select") .. ": " .. selectedTextNew
+			if config.Flag then Library:SetFlag(config.Flag, selected) end
+		end,
+		Get = function() return selected end,
+	}
+	if config.Flag then Library.FlagElements[config.Flag] = handle end
+	return handle
+end
+
+-- ===================== METER =====================
+function TM:CreateMeter(config)
+	config = config or {}
+	local touch = self._touch
+	local compact = Library.Flags.CompactMode
+	local min = config.Min or 0
+	local max = config.Max or 100
+	local value = math.clamp(config.Default or min, min, max)
+	local color = config.Color or Theme.Accent
+	local animated = config.Animated ~= false
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and (compact and 38 or 48) or (compact and 30 or 38)),
+		BackgroundColor3 = Theme.Element,
+	}, { corner(12), stroke() })
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Meter")
+
+	create("TextLabel", {
+		Text = config.Name or "Meter",
+		Font = Enum.Font.GothamMedium,
+		TextSize = touch and (compact and 12 or 14) or (compact and 10 or 12),
+		TextColor3 = Theme.Text,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(0.6, 0, 0, touch and (compact and 14 or 18) or (compact and 10 or 14)),
+		Position = UDim2.new(0, 10, 0, compact and 2 or 6),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}).Parent = holder
+
+	local valueLabel = create("TextLabel", {
+		Text = tostring(value),
+		Font = Enum.Font.GothamBold,
+		TextSize = touch and (compact and 11 or 13) or (compact and 9 or 11),
+		TextColor3 = Theme.SubText,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(0.35, -10, 0, touch and (compact and 14 or 18) or (compact and 10 or 14)),
+		Position = UDim2.new(0.65, 0, 0, compact and 2 or 6),
+		TextXAlignment = Enum.TextXAlignment.Right,
+	})
+	valueLabel.Parent = holder
+
+	local track = create("Frame", {
+		Size = UDim2.new(1, -20, 0, touch and (compact and 6 or 10) or (compact and 4 or 8)),
+		Position = UDim2.new(0, 10, 1, touch and (compact and -12 or -16) or (compact and -10 or -14)),
+		BackgroundColor3 = Color3.fromRGB(55, 55, 62),
+	}, { corner(8) })
+	track.Parent = holder
+
+	local fill = create("Frame", {
+		Size = UDim2.new(0, 0, 1, 0),
+		BackgroundColor3 = color,
+	}, { corner(8) })
+	fill.Parent = track
+
+	local function render(v)
+		v = math.clamp(v, min, max)
+		local relative = (max > min) and ((v - min) / (max - min)) or 0
+		valueLabel.Text = tostring(v)
+		if animated then
+			tween(fill, { Size = UDim2.new(relative, 0, 1, 0) }, 0.3)
+		else
+			fill.Size = UDim2.new(relative, 0, 1, 0)
+		end
+		return v
+	end
+	value = render(value)
+
+	local handle = {
+		Set = function(_, v)
+			value = render(v)
+			if config.Flag then Library:SetFlag(config.Flag, value) end
+		end,
+		Get = function() return value end,
+		SetColor = function(_, newColor)
+			color = newColor
+			fill.BackgroundColor3 = color
+		end,
+	}
+	if config.Flag then
+		Library:SetFlag(config.Flag, value)
+		Library.FlagElements[config.Flag] = handle
+	end
+	return handle
+end
+
+-- ===================== PLUGIN SYSTEM =====================
+Library.Plugins = {}
+Library.PluginRegistry = {}
+local pluginRegistryChangedEvent = Instance.new("BindableEvent")
+Library.PluginRegistryChanged = pluginRegistryChangedEvent.Event
+
+local function findPluginRecord(name)
+	for _, record in ipairs(Library.PluginRegistry) do
+		if record.Name == name then return record end
+	end
+	return nil
+end
+
+function Library:_makePluginContext(window)
+	local self_ = self
+	return {
+		Library = self_,
+		Window = window,
+		Player = LocalPlayer,
+
+		GetFlag = function(_, name) return self_:GetFlag(name) end,
+		SetFlag = function(_, name, value) self_:SetFlag(name, value) end,
+		FlagChanged = self_.FlagChanged,
+
+		SaveConfig = function(_, name) return self_:SaveConfig(name) end,
+		LoadConfig = function(_, name) return self_:LoadConfig(name, window) end,
+		ListConfigs = function(_) return self_:ListConfigs() end,
+		DeleteConfig = function(_, name) return self_:DeleteConfig(name) end,
+		ExportConfig = function(_, name) return self_:ExportConfig(name) end,
+		ImportConfig = function(_, jsonText) return self_:ImportConfig(jsonText, window) end,
+
+		ListPlugins = function(_) return self_:ListPlugins() end,
+		DisablePlugin = function(_, name) return self_:DisablePlugin(name) end,
+		EnablePlugin = function(_, name) return self_:EnablePlugin(name) end,
+		ReloadPlugin = function(_, name) return self_:ReloadPlugin(name) end,
+		UnloadPlugin = function(_, name) return self_:UnloadPlugin(name) end,
+
+		RegisterTheme = function(_, name, themeTable)
+			self_:RegisterTheme(name, themeTable)
+		end,
+		RegisterElement = function(_, name, constructor)
+			self_:RegisterElement(name, constructor)
+		end,
+
+		RegisterCommand = function(_, keyword, fn)
+			if not window then
+				warn("[MobileUILib] RegisterCommand needs a Window — pass one to LoadPlugin/LoadPlugins")
+				return
+			end
+			window:RegisterCommand(keyword, fn)
+		end,
+
+		SetBackground = function(_, config)
+			if not window then
+				warn("[MobileUILib] SetBackground needs a Window — pass one to LoadPlugin/LoadPlugins")
+				return
+			end
+			return window:SetBackground(config)
+		end,
+		ClearBackground = function(_)
+			if window then window:ClearBackground() end
+		end,
+
+		CreateTab = function(_, name, tabConfig)
+			if not window then return nil end
+			return window:CreateTab(name, tabConfig)
+		end,
+
+		Notify = function(_, notifConfig)
+			if window then window:Notify(notifConfig) end
+		end,
+		
+		PlaySound = function(_, soundId, volume)
+			self_:PlaySound(soundId, volume)
+		end,
+		
+		PlayHaptic = function(_, variant)
+			self_:PlayHaptic(variant)
+		end,
+		
+		SetAnimationSpeed = function(_, factor)
+			if window then window:SetAnimationSpeed(factor) end
+		end,
+	}
+end
+
+function Library:LoadPlugin(url, window)
+	local fetchOk, source = pcall(game.HttpGet, game, url)
+	if not fetchOk then
+		warn("[MobileUILib] Plugin fetch failed (" .. tostring(url) .. "): " .. tostring(source))
+		return nil
+	end
+
+	local chunk, compileErr = loadstring(source)
+	if not chunk then
+		warn("[MobileUILib] Plugin failed to compile (" .. tostring(url) .. "): " .. tostring(compileErr))
+		return nil
+	end
+
+	local context = self:_makePluginContext(window)
+	local runOk, result = pcall(chunk, context)
+	if not runOk then
+		warn("[MobileUILib] Plugin errored while loading (" .. tostring(url) .. "): " .. tostring(result))
+		return nil
+	end
+
+	if type(result) == "table" then
+		local name = result.Name or url
+		self.Plugins[name] = result
+
+		local record = findPluginRecord(name)
+		if not record then
+			record = { Name = name }
+			table.insert(self.PluginRegistry, record)
+		end
+		record.Url = url
+		record.Version = result.Version
+		record.Result = result
+		record.Context = context
+		record.Window = window
+		record.Enabled = true
+		record.LoadTime = os.time()
+
+		if type(result.Init) == "function" then
+			local initOk, initErr = pcall(result.Init, context)
+			if not initOk then
+				warn("[MobileUILib] Plugin Init error (" .. tostring(name) .. "): " .. tostring(initErr))
+			end
+		end
+
+		pluginRegistryChangedEvent:Fire()
+	end
+
+	return result
+end
+
+function Library:LoadPlugins(urls, window)
+	local loaded = {}
+	for _, url in ipairs(urls or {}) do
+		loaded[#loaded + 1] = self:LoadPlugin(url, window)
+	end
+	return loaded
+end
+
+function Library:ListPlugins()
+	local list = {}
+	for _, record in ipairs(self.PluginRegistry) do
+		table.insert(list, {
+			Name = record.Name,
+			Version = record.Version,
+			Url = record.Url,
+			Enabled = record.Enabled,
+			LoadTime = record.LoadTime,
+		})
+	end
+	return list
+end
+
+function Library:DisablePlugin(name)
+	local record = findPluginRecord(name)
+	if not record or not record.Enabled then return false end
+
+	if record.Result and type(record.Result.Unload) == "function" then
+		local ok, err = pcall(record.Result.Unload, record.Context)
+		if not ok then
+			warn("[MobileUILib] Plugin Unload error (" .. tostring(name) .. "): " .. tostring(err))
+		end
+	end
+
+	record.Enabled = false
+	pluginRegistryChangedEvent:Fire()
+	return true
+end
+
+function Library:EnablePlugin(name)
+	local record = findPluginRecord(name)
+	if not record or record.Enabled then return false end
+
+	if record.Result and type(record.Result.Init) == "function" then
+		local ok, err = pcall(record.Result.Init, record.Context)
+		if not ok then
+			warn("[MobileUILib] Plugin Init error on re-enable (" .. tostring(name) .. "): " .. tostring(err))
+		end
+	end
+
+	record.Enabled = true
+	pluginRegistryChangedEvent:Fire()
+	return true
+end
+
+function Library:ReloadPlugin(name)
+	local record = findPluginRecord(name)
+	if not record or not record.Url then return false end
+
+	if record.Result and type(record.Result.Unload) == "function" then
+		pcall(record.Result.Unload, record.Context)
+	end
+
+	local fetchOk, source = pcall(game.HttpGet, game, record.Url)
+	if not fetchOk then
+		warn("[MobileUILib] Plugin reload fetch failed (" .. tostring(name) .. "): " .. tostring(source))
+		return false
+	end
+
+	local chunk, compileErr = loadstring(source)
+	if not chunk then
+		warn("[MobileUILib] Plugin reload compile failed (" .. tostring(name) .. "): " .. tostring(compileErr))
+		return false
+	end
+
+	local context = self:_makePluginContext(record.Window)
+	local runOk, result = pcall(chunk, context)
+	if not runOk then
+		warn("[MobileUILib] Plugin reload run error (" .. tostring(name) .. "): " .. tostring(result))
+		return false
+	end
+
+	if type(result) == "table" then
+		self.Plugins[name] = result
+		record.Result = result
+		record.Context = context
+		record.Version = result.Version
+		record.Enabled = true
+		record.LoadTime = os.time()
+
+		if type(result.Init) == "function" then
+			local initOk, initErr = pcall(result.Init, context)
+			if not initOk then
+				warn("[MobileUILib] Plugin Init error on reload (" .. tostring(name) .. "): " .. tostring(initErr))
+			end
+		end
+	end
+
+	pluginRegistryChangedEvent:Fire()
+	return true
+end
+
+function Library:UnloadPlugin(name)
+	local record = findPluginRecord(name)
+	if not record then return false end
+
+	if record.Result and type(record.Result.Unload) == "function" then
+		local ok, err = pcall(record.Result.Unload, record.Context)
+		if not ok then
+			warn("[MobileUILib] Plugin Unload error (" .. tostring(name) .. "): " .. tostring(err))
+		end
+	end
+
+	self.Plugins[name] = nil
+	for i, r in ipairs(self.PluginRegistry) do
+		if r.Name == name then
+			table.remove(self.PluginRegistry, i)
+			break
+		end
+	end
+
+	pluginRegistryChangedEvent:Fire()
+	return true
+end
+
+-- ===================== PLUGIN MANAGER =====================
+function TM:CreatePluginManager(config)
+	config = config or {}
+	local touch = self._touch
+	local compact = Library.Flags.CompactMode
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and (compact and 38 or 46) or (compact and 28 or 34)),
+		BackgroundColor3 = Theme.Element,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, { corner(12), stroke() })
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Plugin Manager")
+
+	create("TextLabel", {
+		Text = config.Name or "Plugins",
+		Font = Enum.Font.GothamBold,
+		TextSize = touch and (compact and 13 or 15) or (compact and 11 or 13),
+		TextColor3 = Theme.Text,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, -20, 0, touch and (compact and 24 or 30) or (compact and 18 or 24)),
+		Position = UDim2.new(0, 10, 0, compact and 4 or 6),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}).Parent = holder
+
+	local list = create("Frame", {
+		Size = UDim2.new(1, -16, 0, 0),
+		Position = UDim2.new(0, 8, 0, touch and (compact and 34 or 40) or (compact and 26 or 32)),
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, {
+		create("UIListLayout", { Padding = UDim.new(0, compact and 4 or 6), SortOrder = Enum.SortOrder.LayoutOrder }),
+		create("UIPadding", { PaddingBottom = UDim.new(0, compact and 4 or 8) }),
+	})
+	list.Parent = holder
+
+	local emptyLabel = create("TextLabel", {
+		Text = "No plugins loaded",
+		Font = Enum.Font.Gotham,
+		TextSize = touch and (compact and 11 or 13) or (compact and 9 or 11),
+		TextColor3 = Theme.SubText,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 24),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	})
+
+	local rowHeight = touch and (compact and 52 or 62) or (compact and 42 or 50)
+
+	local function smallBtn(parent, text, order)
+		local b = create("TextButton", {
+			Text = text,
+			Font = Enum.Font.GothamMedium,
+			TextSize = touch and (compact and 10 or 12) or (compact and 8 or 10),
+			TextColor3 = Theme.Text,
+			BackgroundColor3 = Theme.Element,
+			Size = UDim2.new(0, touch and (compact and 60 or 70) or (compact and 50 or 58), 1, 0),
+			LayoutOrder = order,
+		}, { corner(6) })
+		b.Parent = parent
+		return b
+	end
+
+	local function rebuild()
+		for _, child in ipairs(list:GetChildren()) do
+			if child:IsA("Frame") then child:Destroy() end
+		end
+
+		local plugins = Library:ListPlugins()
+		if #plugins == 0 then
+			emptyLabel.Parent = list
+			return
+		end
+		emptyLabel.Parent = nil
+
+		for i, info in ipairs(plugins) do
+			local row = create("Frame", {
+				Size = UDim2.new(1, 0, 0, rowHeight),
+				BackgroundColor3 = Theme.ElementHover,
+				LayoutOrder = i,
+			}, {
+				corner(8),
+				create("UIPadding", {
+					PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 8),
+					PaddingTop = UDim.new(0, compact and 4 or 6), PaddingBottom = UDim.new(0, compact and 4 or 6),
+				}),
+			})
+			row.Parent = list
+
+			create("TextLabel", {
+				Text = info.Name .. (info.Version and ("  v" .. tostring(info.Version)) or ""),
+				Font = Enum.Font.GothamMedium,
+				TextSize = touch and (compact and 11 or 13) or (compact and 9 or 11),
+				TextColor3 = Theme.Text,
+				BackgroundTransparency = 1,
+				Size = UDim2.new(1, -8, 0, touch and (compact and 12 or 16) or (compact and 10 or 14)),
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+			}).Parent = row
+
+			create("TextLabel", {
+				Text = info.Enabled and "Enabled" or "Disabled",
+				Font = Enum.Font.Gotham,
+				TextSize = touch and (compact and 9 or 11) or (compact and 8 or 10),
+				TextColor3 = info.Enabled and Color3.fromRGB(70, 200, 110) or Color3.fromRGB(230, 75, 75),
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 0, 0, touch and (compact and 14 or 18) or (compact and 11 or 15)),
+				Size = UDim2.new(1, -8, 0, touch and (compact and 10 or 14) or (compact and 8 or 12)),
+				TextXAlignment = Enum.TextXAlignment.Left,
+			}).Parent = row
+
+			local btnRow = create("Frame", {
+				Size = UDim2.new(1, 0, 0, touch and (compact and 20 or 26) or (compact and 14 or 20)),
+				Position = UDim2.new(0, 0, 1, touch and (compact and -20 or -26) or (compact and -14 or -20)),
+				BackgroundTransparency = 1,
+			}, {
+				create("UIListLayout", {
+					FillDirection = Enum.FillDirection.Horizontal,
+					Padding = UDim.new(0, compact and 4 or 6),
+					SortOrder = Enum.SortOrder.LayoutOrder,
+				}),
+			})
+			btnRow.Parent = row
+
+			local toggleBtn = smallBtn(btnRow, info.Enabled and "Disable" or "Enable", 1)
+			toggleBtn.MouseButton1Click:Connect(function()
+				if info.Enabled then
+					Library:DisablePlugin(info.Name)
+				else
+					Library:EnablePlugin(info.Name)
+				end
+			end)
+
+			if info.Url then
+				local reloadBtn = smallBtn(btnRow, "Reload", 2)
+				reloadBtn.MouseButton1Click:Connect(function()
+					Library:ReloadPlugin(info.Name)
+				end)
+			end
+
+			local unloadBtn = smallBtn(btnRow, "Unload", 3)
+			unloadBtn.MouseButton1Click:Connect(function()
+				Library:UnloadPlugin(info.Name)
+			end)
+		end
+	end
+
+	rebuild()
+	local conn = Library.PluginRegistryChanged:Connect(rebuild)
+
+	holder.AncestryChanged:Connect(function(_, parent)
+		if not parent and conn then conn:Disconnect() end
+	end)
+
+	return holder
+end
+
 -- ===================== RETURN =====================
 return Library
