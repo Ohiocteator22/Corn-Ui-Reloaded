@@ -1,6 +1,15 @@
 --[[
-	MobileUILib
+	MobileUILib v1.9
 	A lightweight, mobile-compatible Roblox UI library (Orion-style: window, tabs, buttons, toggles, sliders, dropdowns)
+
+	NEW in v1.9:
+	- Radio Button Group element
+	- Multi-Select Dropdown element
+	- Export/Import Config as text
+	- Custom Element Registration API
+	- Sound Effects for interactions
+	- Haptic Feedback for mobile
+	- More built-in themes (Amethyst, Ruby, Frost)
 
 	Usage:
 		local Library = require(path.to.MobileUILib)
@@ -21,13 +30,9 @@ local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
 local Library = {}
 Library.__index = Library
+Library._customElements = {} -- For Custom Element Registration API
 
 -- ===================== FLAG MANAGER =====================
--- A shared value store so any element (Toggle, Slider, Dropdown, etc.) can be
--- tagged with a config.Flag string and have its value auto-synced here, the
--- same idea as "ESP flags" in other UI libs. Library.FlagChanged fires
--- (flagName, value) any time a flagged element changes, so external scripts
--- can react without needing a reference to the element itself.
 Library.Flags = {}
 local flagChangedEvent = Instance.new("BindableEvent")
 Library.FlagChanged = flagChangedEvent.Event
@@ -38,7 +43,6 @@ end
 
 function Library:SetFlag(name, value)
 	if not name then return end
-	-- Add type validation
 	if self._flagSchema and self._flagSchema[name] then
 		local expectedType = self._flagSchema[name]
 		if type(value) ~= expectedType then
@@ -50,64 +54,28 @@ function Library:SetFlag(name, value)
 	flagChangedEvent:Fire(name, value)
 end
 
--- Elements created with a config.Flag register their {Set, Get} handle here
--- too (see setSearchMeta's siblings below), so Config:Load can push a saved
--- value back into the *element itself* — updating what's on screen, not just
--- Library.Flags — via Library.FlagElements[name]:Set(value). Populated by
--- each element-creation function; not meant to be written to directly.
 Library.FlagElements = {}
 
 -- ===================== KEYBIND REGISTRY =====================
--- Every Tab:CreateKeybind() registers a { Name, Get } descriptor here so
--- Tab:CreateKeybindList() can display "what's bound to what" without
--- needing references to the individual Keybind elements themselves.
 Library.Keybinds = {}
 local keybindRegisteredEvent = Instance.new("BindableEvent")
-Library.KeybindRegistered = keybindRegisteredEvent.Event -- fires (descriptor) when a new Keybind is created
+Library.KeybindRegistered = keybindRegisteredEvent.Event
 local keybindChangedEvent = Instance.new("BindableEvent")
-Library.KeybindChanged = keybindChangedEvent.Event -- fires (descriptor) when an existing Keybind's key changes
+Library.KeybindChanged = keybindChangedEvent.Event
 local keybindUnregisteredEvent = Instance.new("BindableEvent")
-Library.KeybindUnregistered = keybindUnregisteredEvent.Event -- fires (descriptor) when a Keybind element is :Destroy()'d
+Library.KeybindUnregistered = keybindUnregisteredEvent.Event
 
 -- ===================== NOTIFICATION HISTORY =====================
--- WM:Notify (below) pushes every notification it shows into this capped
--- history so Tab:CreateNotificationCenter() can display past notifications,
--- not just the toasts that are currently fading in/out on screen.
 Library.NotificationHistory = {}
 Library.MAX_NOTIFICATION_HISTORY = 50
 local notificationLoggedEvent = Instance.new("BindableEvent")
-Library.NotificationLogged = notificationLoggedEvent.Event -- fires (entry) whenever Notify logs one
+Library.NotificationLogged = notificationLoggedEvent.Event
 
 -- ===================== CONFIG SYSTEM =====================
--- Persists Library.Flags (+ the active theme name) to a JSON file on disk,
--- and restores them on load. Two things make this more than a plain
--- JSONEncode(Library.Flags):
---   1. Color3 and Enum values (from ColorPickers/Keybinds) aren't JSON-safe
---      on their own, so they're wrapped/unwrapped through the two helpers
---      below.
---   2. Loading a flag doesn't just poke Library.Flags — if the flag belongs
---      to a live element (tracked in Library.FlagElements, populated by
---      every Toggle/Slider/Dropdown/Textbox/Keybind/ColorPicker), it calls
---      that element's :Set() instead, so the UI visually updates too.
---
--- IMPORTANT ordering note: every element sets its own default value into
--- Library.Flags the moment it's created (config.Flag + config.Default), so
--- calling LoadConfig *before* your tabs/elements exist will just get
--- overwritten as each element is built. Call Corn:LoadConfig(name, Window)
--- AFTER your whole UI (all tabs/sections/elements) has been created —
--- typically the very last line before handing control back to the user.
---
--- Files are flat, matching the convention already used by KeySystem.lua's
--- SAVE_PATH ("CornUi_Key.txt") rather than introducing folder APIs
--- (makefolder/isfolder) that not every executor implements consistently.
-
 local CONFIG_PREFIX = "CornUi_Config_"
 local CONFIG_SUFFIX = ".json"
 
 local function configPath(name)
-	-- Keep filenames boring and predictable — strip anything that isn't
-	-- alphanumeric/underscore/dash so a bad `name` can't escape the prefix
-	-- or produce a path Roblox's file API rejects outright.
 	local safeName = tostring(name or "default"):gsub("[^%w_%-]", "_")
 	if safeName == "" then safeName = "default" end
 	return CONFIG_PREFIX .. safeName .. CONFIG_SUFFIX
@@ -118,24 +86,17 @@ local function serializeFlagValue(value)
 	if kind == "Color3" then
 		return { __type = "Color3", r = value.R, g = value.G, b = value.B }
 	elseif kind == "EnumItem" then
-		-- e.g. Enum.KeyCode.F -> { __type = "Enum", enum = "KeyCode", name = "F" }
 		local enumName = tostring(value.EnumType):gsub("^Enum%.", "")
 		return { __type = "Enum", enum = enumName, name = value.Name }
 	elseif kind == "number" or kind == "string" or kind == "boolean" then
 		return value
 	elseif kind == "table" then
-		-- Generic array support (e.g. CreateColorGradient's list of Color3
-		-- stops) — recurse per element instead of falling through to
-		-- tostring(), which would silently lose the data.
 		local out = {}
 		for i, v in ipairs(value) do
 			out[i] = serializeFlagValue(v)
 		end
 		return { __type = "Array", items = out }
 	else
-		-- Anything else (Vector3, UDim2, nil, ...) isn't currently produced by
-		-- a flag-bearing element, but fall back to a readable string instead
-		-- of letting JSONEncode error out the whole save.
 		return tostring(value)
 	end
 end
@@ -160,8 +121,6 @@ local function deserializeFlagValue(value)
 	end
 end
 
--- Library:SaveConfig(name?) — writes every current flag (plus the active
--- theme name) to CornUi_Config_<name>.json. Returns true/false.
 function Library:SaveConfig(name)
 	if not (writefile) then
 		warn("[MobileUILib] SaveConfig: this executor doesn't expose writefile")
@@ -187,10 +146,6 @@ function Library:SaveConfig(name)
 	return true
 end
 
--- Library:LoadConfig(name?, window?) — reads back a config saved with
--- SaveConfig. `window` is optional but needed to restore the theme (theme
--- switching is a Window method, not a Library one); flags restore either
--- way. See the ordering note above the Config System header.
 function Library:LoadConfig(name, window)
 	if not (isfile and readfile) then
 		warn("[MobileUILib] LoadConfig: this executor doesn't expose isfile/readfile")
@@ -200,7 +155,7 @@ function Library:LoadConfig(name, window)
 	local path = configPath(name)
 	local existsOk, exists = pcall(isfile, path)
 	if not existsOk or not exists then
-		return false -- not an error — just nothing saved under this name yet
+		return false
 	end
 
 	local readOk, raw = pcall(readfile, path)
@@ -226,8 +181,6 @@ function Library:LoadConfig(name, window)
 			if elem and elem.Set then
 				pcall(function() elem:Set(value) end)
 			else
-				-- No live element for this flag (e.g. it was set purely via
-				-- ctx:SetFlag by a plugin) — still restore the raw value.
 				Library:SetFlag(flagName, value)
 			end
 		end
@@ -236,10 +189,6 @@ function Library:LoadConfig(name, window)
 	return true
 end
 
--- Library:ListConfigs() — best-effort list of saved config names (without
--- the CornUi_Config_ prefix / .json suffix). Depends on the executor
--- exposing listfiles with root-directory support, which isn't universal —
--- returns an empty table rather than erroring if it's unavailable.
 function Library:ListConfigs()
 	if not listfiles then return {} end
 	local ok, files = pcall(listfiles, "")
@@ -254,7 +203,6 @@ function Library:ListConfigs()
 	return names
 end
 
--- Library:DeleteConfig(name?) — removes a saved config file. Returns true/false.
 function Library:DeleteConfig(name)
 	if not (delfile and isfile) then
 		warn("[MobileUILib] DeleteConfig: this executor doesn't expose delfile/isfile")
@@ -271,19 +219,60 @@ function Library:DeleteConfig(name)
 	return true
 end
 
+-- ===================== EXPORT/IMPORT CONFIG AS TEXT =====================
+function Library:ExportConfig(name)
+	local data = { Flags = {}, Theme = Library._currentThemeName or "Dark" }
+	for flagName, value in pairs(Library.Flags) do
+		data.Flags[flagName] = serializeFlagValue(value)
+	end
+	
+	local ok, json = pcall(function() return HttpService:JSONEncode(data) end)
+	if not ok then
+		warn("[MobileUILib] ExportConfig: JSONEncode failed — " .. tostring(json))
+		return nil
+	end
+	return json
+end
+
+function Library:ImportConfig(jsonText, window)
+	local decodeOk, data = pcall(function() return HttpService:JSONDecode(jsonText) end)
+	if not decodeOk or type(data) ~= "table" then
+		warn("[MobileUILib] ImportConfig: malformed config data")
+		return false
+	end
+
+	if data.Theme and window then
+		pcall(function() window:SetTheme(data.Theme) end)
+	end
+
+	if type(data.Flags) == "table" then
+		for flagName, rawValue in pairs(data.Flags) do
+			local value = deserializeFlagValue(rawValue)
+			local elem = Library.FlagElements[flagName]
+			if elem and elem.Set then
+				pcall(function() elem:Set(value) end)
+			else
+				Library:SetFlag(flagName, value)
+			end
+		end
+	end
+
+	return true
+end
+
 -- ===================== THEME =====================
 local Themes = {
 	Dark = {
 		Background = Color3.fromRGB(10, 10, 12),
 		Header = Color3.fromRGB(16, 16, 19),
-		Accent = Color3.fromRGB(255, 196, 48), -- corn yellow
+		Accent = Color3.fromRGB(255, 196, 48),
 		TextOnAccent = Color3.fromRGB(20, 20, 24),
 		Text = Color3.fromRGB(240, 240, 245),
 		SubText = Color3.fromRGB(140, 140, 148),
 		Element = Color3.fromRGB(20, 20, 24),
 		ElementHover = Color3.fromRGB(28, 28, 33),
 		Stroke = Color3.fromRGB(38, 38, 44),
-		ToggleButton = Color3.fromRGB(20, 20, 24), -- floating toggle button bg; decoupled from Element so the theme editor can recolor it independently
+		ToggleButton = Color3.fromRGB(20, 20, 24),
 	},
 	Light = {
 		Background = Color3.fromRGB(246, 246, 249),
@@ -297,11 +286,10 @@ local Themes = {
 		Stroke = Color3.fromRGB(212, 212, 220),
 		ToggleButton = Color3.fromRGB(233, 233, 238),
 	},
-	-- === NEW THEME: Ocean ===
 	Ocean = {
 		Background = Color3.fromRGB(8, 20, 40),
 		Header = Color3.fromRGB(12, 30, 50),
-		Accent = Color3.fromRGB(64, 224, 208), -- Turquoise
+		Accent = Color3.fromRGB(64, 224, 208),
 		TextOnAccent = Color3.fromRGB(0, 0, 0),
 		Text = Color3.fromRGB(220, 240, 255),
 		SubText = Color3.fromRGB(160, 190, 210),
@@ -310,7 +298,6 @@ local Themes = {
 		Stroke = Color3.fromRGB(40, 70, 90),
 		ToggleButton = Color3.fromRGB(16, 35, 55),
 	},
-	-- === NEW THEME: Forest ===
 	Forest = {
 		Background = Color3.fromRGB(10, 25, 10),
 		Header = Color3.fromRGB(15, 35, 15),
@@ -323,7 +310,6 @@ local Themes = {
 		Stroke = Color3.fromRGB(40, 80, 40),
 		ToggleButton = Color3.fromRGB(15, 35, 15),
 	},
-	-- === NEW THEME: Sunset ===
 	Sunset = {
 		Background = Color3.fromRGB(40, 10, 20),
 		Header = Color3.fromRGB(50, 15, 25),
@@ -336,14 +322,62 @@ local Themes = {
 		Stroke = Color3.fromRGB(90, 40, 50),
 		ToggleButton = Color3.fromRGB(50, 15, 25),
 	},
+	-- NEW THEMES v1.9
+	Amethyst = {
+		Background = Color3.fromRGB(25, 15, 40),
+		Header = Color3.fromRGB(30, 20, 45),
+		Accent = Color3.fromRGB(180, 120, 255),
+		TextOnAccent = Color3.fromRGB(0, 0, 0),
+		Text = Color3.fromRGB(240, 225, 255),
+		SubText = Color3.fromRGB(180, 160, 200),
+		Element = Color3.fromRGB(30, 20, 45),
+		ElementHover = Color3.fromRGB(40, 30, 55),
+		Stroke = Color3.fromRGB(60, 45, 80),
+		ToggleButton = Color3.fromRGB(30, 20, 45),
+	},
+	Ruby = {
+		Background = Color3.fromRGB(40, 10, 10),
+		Header = Color3.fromRGB(50, 15, 15),
+		Accent = Color3.fromRGB(255, 60, 60),
+		TextOnAccent = Color3.fromRGB(0, 0, 0),
+		Text = Color3.fromRGB(255, 220, 220),
+		SubText = Color3.fromRGB(210, 160, 160),
+		Element = Color3.fromRGB(50, 15, 15),
+		ElementHover = Color3.fromRGB(65, 25, 25),
+		Stroke = Color3.fromRGB(90, 40, 40),
+		ToggleButton = Color3.fromRGB(50, 15, 15),
+	},
+	Frost = {
+		Background = Color3.fromRGB(20, 30, 45),
+		Header = Color3.fromRGB(25, 35, 50),
+		Accent = Color3.fromRGB(150, 220, 255),
+		TextOnAccent = Color3.fromRGB(0, 0, 0),
+		Text = Color3.fromRGB(230, 245, 255),
+		SubText = Color3.fromRGB(170, 190, 210),
+		Element = Color3.fromRGB(25, 35, 50),
+		ElementHover = Color3.fromRGB(35, 45, 60),
+		Stroke = Color3.fromRGB(55, 70, 90),
+		ToggleButton = Color3.fromRGB(25, 35, 50),
+	},
 }
 
--- Library:RegisterTheme("Name", { Background = Color3..., Accent = ... }) —
--- adds a custom preset alongside the built-in Dark/Light so it can be passed
--- to CreateWindow({ Theme = "Name" }) or Window:SetTheme("Name"). Any key you
--- don't specify falls back to the Dark preset's value, so you only need to
--- override what actually changes. Intended for plugins (e.g. a "brand theme"
--- plugin) as well as direct use.
+-- ===================== CUSTOM ELEMENT REGISTRATION API =====================
+function Library:RegisterElement(name, constructor)
+	if type(name) ~= "string" or type(constructor) ~= "function" then
+		warn("[MobileUILib] RegisterElement requires a name string and a constructor function")
+		return
+	end
+	Library._customElements[name] = constructor
+end
+
+function Library:GetRegisteredElements()
+	local list = {}
+	for name in pairs(Library._customElements) do
+		table.insert(list, name)
+	end
+	return list
+end
+
 function Library:RegisterTheme(name, themeTable)
 	if type(name) ~= "string" or type(themeTable) ~= "table" then
 		warn("[MobileUILib] RegisterTheme requires a name string and a table of colors")
@@ -355,9 +389,6 @@ function Library:RegisterTheme(name, themeTable)
 	Themes[name] = merged
 end
 
--- Active theme, mutated in place by CreateWindow based on config.Theme.
--- Every element-creation function below reads from this same table, so
--- swapping presets before building the window is all that's needed.
 local Theme = {}
 for k, v in pairs(Themes.Dark) do Theme[k] = v end
 
@@ -381,11 +412,6 @@ local function corner(radius)
 	return create("UICorner", { CornerRadius = UDim.new(0, radius or 8) })
 end
 
--- Tags an element with search metadata: MUI_Name (kept for back-compat / display
--- purposes) plus MUI_Search, a single lowercased blob combining the name,
--- optional config.Keywords (string or array of strings), and optional
--- config.Description. Tab:CreateSearch matches against MUI_Search so results
--- surface on keyword/description hits too, not just the visible name.
 local function setSearchMeta(inst, config, defaultName)
 	config = config or {}
 	local name = config.Name or defaultName or ""
@@ -416,11 +442,6 @@ end
 
 local function tween(inst, props, duration)
 	if Library.Flags.ReducedMotion then
-		-- Performance mode: skip TweenService entirely and jump straight to
-		-- the end state. This is the single choke point nearly every UI
-		-- animation in this file goes through (ripple, tab switching, theme
-		-- transitions, and the intro), so gating it here disables all of
-		-- them at once instead of patching each call site individually.
 		for prop, value in pairs(props) do
 			inst[prop] = value
 		end
@@ -429,7 +450,42 @@ local function tween(inst, props, duration)
 	TweenService:Create(inst, TweenInfo.new(duration or 0.15, Enum.EasingStyle.Quad), props):Play()
 end
 
--- Pulsing outline for the currently-selected tab ("breathing" bloom)
+-- ===================== SOUND & HAPTIC HELPERS =====================
+function Library:PlaySound(soundId, volume)
+	if not Library.Flags.UISounds then return end
+	if not soundId then return end
+	local sound = Instance.new("Sound")
+	sound.SoundId = soundId
+	sound.Volume = volume or 0.3
+	sound.Parent = game:GetService("Players").LocalPlayer.PlayerGui
+	sound:Play()
+	task.delay(sound.TimeLength + 0.1, function()
+		sound:Destroy()
+	end)
+end
+
+function Library:PlayHaptic()
+	if not Library.Flags.Haptics then return end
+	if UserInputService.Vibrate then
+		pcall(function()
+			UserInputService:Vibrate(Enum.VibrateType.Short)
+		end)
+	end
+end
+
+local function playInteractionSound(style)
+	local sounds = {
+		click = "rbxassetid://9120396650",
+		toggle = "rbxassetid://9120398374",
+		slider = "rbxassetid://9120400890",
+		dropdown = "rbxassetid://9120404583",
+		success = "rbxassetid://9120411087",
+		error = "rbxassetid://9120413090",
+	}
+	local id = sounds[style] or sounds.click
+	Library:PlaySound(id)
+end
+
 local function startBreathingGlow(guiObject, color)
 	local glow = create("UIStroke", { Color = color, Thickness = 2, Transparency = 0.3 })
 	glow.Parent = guiObject
@@ -447,21 +503,6 @@ local function stopBreathingGlow(glow, glowTween)
 	if glow then glow:Destroy() end
 end
 
--- Static (non-pulsing) outline shown on mouse hover — desktop only, since
--- touch devices have no hover concept; simply never fires on mobile.
-local function attachHoverGlow(guiObject, color)
-	guiObject.MouseEnter:Connect(function()
-		if guiObject:FindFirstChild("_HoverGlow") then return end
-		local s = create("UIStroke", { Name = "_HoverGlow", Color = color, Thickness = 1.5, Transparency = 0.5 })
-		s.Parent = guiObject
-	end)
-	guiObject.MouseLeave:Connect(function()
-		local s = guiObject:FindFirstChild("_HoverGlow")
-		if s then s:Destroy() end
-	end)
-end
-
--- Expanding circular ripple from the center of a button, clipped to its bounds
 local function ripple(button, color)
 	button.ClipsDescendants = true
 	local circle = create("Frame", {
@@ -481,10 +522,6 @@ local function ripple(button, color)
 	end)
 end
 
--- Temporarily shifts every GuiObject under `root` (plus root itself) by `offset`
--- ZIndex. Used to lift an open dropdown/color-picker panel above the spotlight
--- dimmer; calling it again with the negated offset restores the original values
--- exactly, so no snapshot bookkeeping is needed.
 local function shiftZIndex(root, offset)
 	if root:IsA("GuiObject") then
 		root.ZIndex += offset
@@ -496,7 +533,6 @@ local function shiftZIndex(root, offset)
 	end
 end
 
--- Makes a frame draggable via mouse OR touch, and clamps it on-screen.
 local function makeDraggable(dragHandle, target)
 	local dragging = false
 	local dragStart, startPos
@@ -532,7 +568,6 @@ local function makeDraggable(dragHandle, target)
 		end
 	end)
 
-	-- Global input for touch move events fired on UserInputService (more reliable on mobile)
 	UserInputService.InputChanged:Connect(function(input)
 		if dragging and input.UserInputType == Enum.UserInputType.Touch then
 			update(input)
@@ -544,61 +579,42 @@ end
 function Library:CreateWindow(config)
 	config = config or {}
 	
-	-- === PERFORMANCE MODE CHECK ===
 	if Library.Flags.PerformanceMode then
 		config.Intro = false
 	end
 	
 	local windowName = config.Name or "UI Library"
-	-- Each GUI name owns one window. Keeping the default preserves the original
-	-- single-window behavior, while an external/secondary script can provide a
-	-- different GuiName and coexist with the primary hub.
 	local guiName = config.GuiName or "MobileUILib"
 	local windowPosition = config.Position or UDim2.new(0.5, 0, 0.5, 0)
-	local subtitle = config.Subtitle -- optional second line under the title
-	local iconId = config.Icon -- can be a raw asset id number, or a full "rbxassetid://" string
+	local subtitle = config.Subtitle
+	local iconId = config.Icon
 	if iconId and type(iconId) == "number" then
 		iconId = "rbxassetid://" .. tostring(iconId)
 	elseif iconId and type(iconId) == "string" and not iconId:match("^rbxassetid://") then
 		iconId = "rbxassetid://" .. iconId
 	end
 
-	-- Apply theme preset (defaults to Dark) before building anything
 	local preset = Themes[config.Theme] or Themes.Dark
 	for k, v in pairs(preset) do Theme[k] = v end
 	Library._currentThemeName = Themes[config.Theme] and config.Theme or "Dark"
 
-	-- Replace only the window using this GUI identity. This lets independently
-	-- hosted scripts create a secondary CornUi window with another GuiName.
 	local existing = PlayerGui:FindFirstChild(guiName)
 	if existing then existing:Destroy() end
 
 	local screenGui = create("ScreenGui", {
 		Name = guiName,
 		ResetOnSpawn = false,
-		-- Global mode compares ZIndex across the WHOLE tree, not just siblings.
-		-- Needed so overlays (spotlight dimmer, intro, dropdown panels) can
-		-- reliably sit above/below arbitrarily nested content.
 		ZIndexBehavior = Enum.ZIndexBehavior.Global,
-		IgnoreGuiInset = false, -- respects mobile safe-area / notch
+		IgnoreGuiInset = false,
 	})
 	screenGui.Parent = PlayerGui
 
-	-- UIScale makes the whole UI scale with actual screen size (see auto-scale below)
 	local uiScale = create("UIScale", { Scale = 1 })
 
 	local touch = isTouchDevice()
 	local togglePosition = config.TogglePosition or UDim2.new(1, -(touch and 68 or 58), 0, 16)
-	-- Base size: wider % of screen on mobile since screens are smaller/portrait.
-	-- Bumped taller than before so ~3 tabs fit before the tab list needs to scroll.
 	local mainSizeScale = touch and UDim2.new(0.92, 0, 0.82, 0) or UDim2.new(0, 560, 0, 460)
 
-	-- NOTE: this used to be a CanvasGroup so the whole hub could fade in as one
-	-- unit via GroupTransparency. Reverted to a plain Frame: CanvasGroups have
-	-- a known Roblox rendering issue where Text on GuiObjects nested inside a
-	-- ScrollingFrame (like dropdown options) can render blank. Not worth it.
-	-- The hub is simply built fully visible from the start; the opaque intro
-	-- overlay (created further down) sits on top and hides it until it parts.
 	local main = create("Frame", {
 		Name = "Main",
 		Size = mainSizeScale,
@@ -610,12 +626,6 @@ function Library:CreateWindow(config)
 	}, { corner(16), stroke(), uiScale })
 	main.Parent = screenGui
 
-	-- Auto-scale for the actual device screen. ViewportSize is the real,
-	-- reliable way to read the player's screen/window resolution (a plain
-	-- ScreenGui's AbsoluteSize needs the gui already laid out, so the camera's
-	-- viewport is used instead — it reflects the same physical screen size).
-	-- Clamped so tiny phones don't shrink text unreadably small and big
-	-- monitors don't blow the hub up huge.
 	local function applyAutoScale()
 		local camera = workspace.CurrentCamera
 		local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
@@ -628,10 +638,6 @@ function Library:CreateWindow(config)
 
 	local isLight = (preset == Themes.Light)
 
-
-	-- Stylized "glass" sheen: Roblox's 2D GUI layer has no real background-blur
-	-- API, so this is a subtle transparency + diagonal light-streak approximation
-	-- rather than a literal frosted/acrylic blur.
 	main.BackgroundTransparency = isLight and 0.06 or 0.1
 	local glassSheen = create("Frame", {
 		Name = "GlassSheen",
@@ -664,15 +670,11 @@ function Library:CreateWindow(config)
 		BackgroundColor3 = Theme.Header,
 		BorderSizePixel = 0,
 		ZIndex = 2,
-	}, {
-		corner(16),
-	})
+	}, { corner(16) })
 	header.Parent = main
 
 	local titleOffset = 15
 	if iconId then
-		-- Bumped up from 28/22 — the old size was hard to see on phone screens
-		-- and could be nearly invisible on a PC monitor.
 		local iconSize = touch and 36 or 30
 		local icon = create("ImageLabel", {
 			Image = iconId,
@@ -683,19 +685,10 @@ function Library:CreateWindow(config)
 			ZIndex = 2,
 		}, { corner(10) })
 		icon.Parent = header
-		-- SetTheme does a reverse color-lookup: it tweens any instance whose
-		-- current color happens to match a color in the OLD theme to the
-		-- equivalent slot in the NEW theme. This icon's ImageColor3 starts at
-		-- the Roblox default (white), which can coincidentally equal a theme
-		-- color (Light.Header is pure white), causing SetTheme to retint it
-		-- by accident and make it seem to "disappear". Flagging it opts it out.
 		icon:SetAttribute("MUI_NoTheme", true)
 		titleOffset = 12 + iconSize + 8
 	end
 
-	-- The title doubles as a lightweight command palette: tap/click it, type
-	-- a keyword (e.g. "T-notif"), and it fires a registered action, then
-	-- reverts back to showing the hub's name. See Window:RegisterCommand.
 	local titleBox
 
 	if subtitle then
@@ -740,7 +733,6 @@ function Library:CreateWindow(config)
 		titleBox.Parent = header
 	end
 
-	-- Minimize / show-hide button (essential on mobile - no keybind to toggle UI)
 	local minimizeBtn = create("TextButton", {
 		Text = "—",
 		Font = Enum.Font.GothamBold,
@@ -754,7 +746,6 @@ function Library:CreateWindow(config)
 	}, { corner(12) })
 	minimizeBtn.Parent = header
 
-	-- In-hub theme switch (Dark/Light), transitions with a fade instead of snapping
 	local currentThemeName = isLight and "Light" or "Dark"
 	local themeBtn = create("TextButton", {
 		Text = isLight and "🌙" or "☀",
@@ -771,18 +762,9 @@ function Library:CreateWindow(config)
 
 	makeDraggable(header, main)
 
-	-- Floating toggle button: always on-screen, brings the whole UI back
-	-- even if it's fully hidden. Placed top-right — bottom corners are where
-	-- the mobile joystick (bottom-left) and jump button (bottom-right) live.
 	local floatSize = touch and 52 or 42
 	local floatBtn
 	if iconId then
-		-- The icon used to be set directly as this ImageButton's own `Image`
-		-- property, which UIPadding can't inset (padding only affects layout
-		-- of children, not an instance's own Image), so the icon looked cut
-		-- off flush against the circular edge. Now the ImageButton itself
-		-- carries no Image; a separate child ImageLabel sized ~72% and
-		-- centered provides the padded icon instead.
 		floatBtn = create("ImageButton", {
 			Name = "FloatToggle",
 			Image = "",
@@ -804,7 +786,6 @@ function Library:CreateWindow(config)
 			ZIndex = 51,
 		})
 		floatIcon.Parent = floatBtn
-		-- Same accidental-retint issue as the header icon — see the note there.
 		floatIcon:SetAttribute("MUI_NoTheme", true)
 	else
 		floatBtn = create("TextButton", {
@@ -843,9 +824,6 @@ function Library:CreateWindow(config)
 	})
 	body.Parent = main
 
-	-- Dedicated scroll region for the tab list: fits ~3 tabs comfortably before
-	-- scrolling, with its own visible scrollbar (separate from each page's own
-	-- content scrolling) so a long tab list never spills outside the window.
 	local tabList = create("ScrollingFrame", {
 		Name = "TabList",
 		Size = UDim2.new(touch and 0.32 or 0.28, 0, 1, 0),
@@ -902,8 +880,6 @@ function Library:CreateWindow(config)
 	})
 	notifHolder.Parent = screenGui
 
-	-- Spotlight overlay: dims the tab list + page content while a dropdown,
-	-- color picker, or other popover is open, drawing focus to it.
 	local spotlightOverlay = create("Frame", {
 		Name = "Spotlight",
 		Size = body.Size,
@@ -933,7 +909,6 @@ function Library:CreateWindow(config)
 			["t-notif"] = function(w)
 				w:Notify({ Title = "Test Notification", Content = "This is a test notification.", Type = "info" })
 			end,
-			-- === NEW BUILT-IN COMMANDS ===
 			["theme"] = function(w, argString)
 				local theme = argString:match("^(%S+)")
 				if theme and Themes[theme] then
@@ -978,14 +953,60 @@ function Library:CreateWindow(config)
 				tween(main, { Size = minimized and UDim2.new(main.Size.X.Scale, main.Size.X.Offset, 0, headerHeight) or mainSizeScale }, 0.2)
 				body.Visible = not minimized
 			end,
+			["export"] = function(w)
+				local json = Library:ExportConfig()
+				if json then
+					local popup = create("Frame", {
+						Size = UDim2.new(0, 400, 0, 300),
+						Position = UDim2.new(0.5, 0, 0.5, 0),
+						AnchorPoint = Vector2.new(0.5, 0.5),
+						BackgroundColor3 = Theme.Header,
+						ZIndex = 201,
+					}, { corner(14), stroke(Theme.Accent, 1.5) })
+					popup.Parent = screenGui
+					
+					create("TextLabel", {
+						Text = "Export Config",
+						Font = Enum.Font.GothamBold,
+						TextSize = 16,
+						TextColor3 = Theme.Text,
+						BackgroundTransparency = 1,
+						Size = UDim2.new(1, 0, 0, 30),
+						Position = UDim2.new(0, 0, 0, 8),
+					}).Parent = popup
+					
+					local textBox = create("TextBox", {
+						Text = json,
+						Font = Enum.Font.Gotham,
+						TextSize = 12,
+						TextColor3 = Theme.Text,
+						BackgroundColor3 = Theme.Element,
+						Size = UDim2.new(1, -20, 1, -60),
+						Position = UDim2.new(0, 10, 0, 40),
+						ClearTextOnFocus = false,
+						TextWrapped = true,
+						TextScaled = true,
+					}, { corner(8) })
+					textBox.Parent = popup
+					
+					local closeBtn = create("TextButton", {
+						Text = "Close",
+						Font = Enum.Font.GothamBold,
+						TextSize = 14,
+						TextColor3 = Theme.Text,
+						BackgroundColor3 = Theme.Accent,
+						Size = UDim2.new(0, 80, 0, 30),
+						Position = UDim2.new(0.5, -40, 1, -40),
+					}, { corner(8) })
+					closeBtn.Parent = popup
+					closeBtn.MouseButton1Click:Connect(function()
+						popup:Destroy()
+					end)
+				end
+			end,
 		},
 	}, { __index = Library.WindowMethods })
 
-	-- Command palette: typing a registered keyword into the title and
-	-- pressing Enter (or clicking away) fires that command, then the title
-	-- reverts to showing the hub's name again. Anything after the first word
-	-- is passed along as arguments, so plugins can build admin-panel-style
-	-- commands like "speed 50" or "fly on".
 	titleBox.Focused:Connect(function()
 		titleBox.Text = ""
 	end)
@@ -1014,23 +1035,15 @@ function Library:CreateWindow(config)
 	end)
 
 	-- ===================== INTRO ANIMATION =====================
-	-- Plays on top of the hub (already fully built by this point, just faded
-	-- out via GroupTransparency) so it overlaps instead of blocking
-	-- construction. No sound. Wipe-in reveal, then a split-panel exit with
-	-- the hub fading in underneath as the panels part.
 	if Library.Flags.ReducedMotion then
-		-- Performance mode: the intro is built from task.wait()'d phases, so
-		-- an instant-tween alone can't shortcut it — skip building it at all.
-		-- Set this flag with Library:SetFlag("ReducedMotion", true) BEFORE
-		-- calling CreateWindow for it to take effect (the intro only plays once).
 		return Window
 	end
 	local introConfig = config.Intro or {}
 	local introImage = introConfig.Image
 	if introImage == nil then
-		introImage = 80406291512141 -- default intro image asset
+		introImage = 80406291512141
 	elseif introImage == false then
-		introImage = nil -- explicit opt-out: Intro = { Image = false }
+		introImage = nil
 	end
 	if introImage and type(introImage) == "number" then
 		introImage = "rbxassetid://" .. tostring(introImage)
@@ -1038,7 +1051,7 @@ function Library:CreateWindow(config)
 		introImage = "rbxassetid://" .. introImage
 	end
 	local introText = introConfig.Text or "-By Lifeless"
-	local introHold = introConfig.Duration or 1.4 -- seconds the intro stays fully visible
+	local introHold = introConfig.Duration or 1.4
 	local normalIntroTooltips = {
 		"Tip: click the hub name to open the command palette.",
 		"Tip: click the floating button to hide or restore the hub.",
@@ -1058,7 +1071,6 @@ function Library:CreateWindow(config)
 		"gooning....Wait",
 		"Yes i used claude for debugging, SMD if you have problem",
 		"Alt+F4 gives free bobux",
-		
 	}
 	local introTooltips = introConfig.Funny == true and funnyIntroTooltips or normalIntroTooltips
 	local lastIntroTooltip
@@ -1074,19 +1086,18 @@ function Library:CreateWindow(config)
 
 	local introBg = isLight and Color3.fromRGB(250, 250, 252) or Color3.fromRGB(0, 0, 0)
 	local introLineColor = isLight and Color3.fromRGB(20, 20, 24) or Color3.fromRGB(255, 255, 255)
-	local introTextColor = Color3.fromRGB(255, 196, 48) -- corn yellow, fixed regardless of theme
+	local introTextColor = Color3.fromRGB(255, 196, 48)
 
 	local introOverlay = create("Frame", {
 		Name = "IntroOverlay",
 		Size = UDim2.new(1, 0, 1, 0),
-		BackgroundTransparency = 1, -- container only; the wipe/panels below carry the color
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		ZIndex = 300,
-		Active = true, -- blocks input to the hub underneath while the intro plays
+		Active = true,
 	})
 	introOverlay.Parent = screenGui
 
-	-- Wipe-in: a colored panel grows left-to-right like a brush stroke painting the screen
 	local wipe = create("Frame", {
 		Size = UDim2.new(0, 0, 1, 0),
 		BackgroundColor3 = introBg,
@@ -1151,11 +1162,9 @@ function Library:CreateWindow(config)
 	introTooltipLabel.Parent = introHolder
 
 	task.spawn(function()
-		-- Phase 1: brush-stroke wipe reveal
 		tween(wipe, { Size = UDim2.new(1, 0, 1, 0) }, 0.5)
 		task.wait(0.5)
 
-		-- Phase 2: logo + brand text fade in
 		if introImgLabel then
 			tween(introImgLabel, { ImageTransparency = 0 }, 0.5)
 			task.wait(0.3)
@@ -1163,8 +1172,6 @@ function Library:CreateWindow(config)
 		tween(introTextLabel, { TextTransparency = 0 }, 0.5)
 		tween(introTooltipLabel, { TextTransparency = 0 }, 0.5)
 
-		-- A normal intro shows one useful tip; longer custom intros rotate through
-		-- the selected normal/funny list without extending the configured duration.
 		local elapsed = 0
 		while elapsed < introHold do
 			local waitTime = math.min(2, introHold - elapsed)
@@ -1175,7 +1182,6 @@ function Library:CreateWindow(config)
 			end
 		end
 
-		-- Phase 3: fade out logo/text, then split the panel in two and part it
 		tween(introTextLabel, { TextTransparency = 1 }, 0.3)
 		tween(introTooltipLabel, { TextTransparency = 1 }, 0.3)
 		if introImgLabel then tween(introImgLabel, { ImageTransparency = 1 }, 0.3) end
@@ -1210,7 +1216,6 @@ function Library:CreateWindow(config)
 		})
 		centerLine.Parent = introOverlay
 
-		-- Hub is already fully built underneath — the panels parting is the reveal
 		tween(topHalf, { Position = UDim2.new(0, 0, -0.5, 0) }, 0.55)
 		tween(bottomHalf, { Position = UDim2.new(0, 0, 1, 0) }, 0.55)
 		tween(centerLine, { BackgroundTransparency = 1 }, 0.4)
@@ -1225,8 +1230,7 @@ end
 Library.WindowMethods = {}
 local WM = Library.WindowMethods
 
--- Window:Notify({ Title = "Saved", Content = "...", Duration = 4, Type = "success" })
--- Type is optional: "success" | "error" | "warning" | "info" (defaults to plain accent)
+-- Window:Notify
 function WM:Notify(config)
 	config = config or {}
 	local touch = self._touch
@@ -1252,9 +1256,6 @@ function WM:Notify(config)
 
 	self._notifCount += 1
 
-	-- Log to the shared history before building the visual toast, so a
-	-- NotificationCenter element (which may live on a different tab, or
-	-- be created after this call) always has the full record.
 	Library._notifSeq = (Library._notifSeq or 0) + 1
 	local historyEntry = {
 		Title = title,
@@ -1340,8 +1341,6 @@ function WM:Notify(config)
 	})
 	contentLabel.Parent = notif
 
-	-- Countdown bar: shrinks over the notification's lifetime. Grey when no
-	-- Type is given, otherwise matches the type's color.
 	local progressColor = typeColors[notifType] or Color3.fromRGB(140, 140, 148)
 	local progressTrack = create("Frame", {
 		Size = UDim2.new(1, 0, 0, 3),
@@ -1378,17 +1377,11 @@ function WM:Notify(config)
 	end)
 end
 
--- Window:SetTheme("Light" | "Dark") — live-swaps every instance whose current
--- color matches a known color in the OLD theme to the corresponding color in
--- the NEW theme, tweened. This avoids needing a manual registry: it works by
--- diffing against the theme table itself rather than tracking every instance.
+-- Window:SetTheme
 function WM:SetTheme(name)
 	local newPreset = Themes[name]
 	if not newPreset then return end
 
-	-- Every theme switch (light/dark toggle, plugins, Config:Load) goes
-	-- through here, so this is the one place that needs to remember the
-	-- active preset name for the Config System to save/restore later.
 	Library._currentThemeName = name
 
 	local reverseMap = {}
@@ -1426,29 +1419,13 @@ function WM:SetTheme(name)
 	for k, v in pairs(newPreset) do Theme[k] = v end
 end
 
--- Keys the in-hub Theme Editor is allowed to touch. The yellow Accent is the
--- fixed "corn" brand color and is deliberately left out here so it can never
--- be recolored through the editor.
 local THEME_EDITOR_KEYS = { Background = true, ToggleButton = true }
 
--- Window:SetThemeColor(key, color) — single-key version of SetTheme's reverse
--- lookup tween. Used by Tab:CreateThemeEditor() so picking a new "UI Color"
--- or "Toggle Button Color" only retints instances currently using that one
--- theme slot, instead of re-running the full theme diff.
 function WM:SetThemeColor(key, color)
 	if not THEME_EDITOR_KEYS[key] then return end
 	local oldColor = Theme[key]
 	if not oldColor then return end
 
-	-- NOTE: this runs on every color-picker drag frame (many times a
-	-- second), not just once on release. It used to tween() each match over
-	-- 0.25s, but that meant an instance's live color usually hadn't finished
-	-- animating to `oldColor` by the time the next drag-frame's exact-match
-	-- check ran — so the match failed and the instance silently stopped
-	-- updating. That's why dragging only ever seemed to "take" on the very
-	-- first tap. Setting instantly keeps every instance's live color exactly
-	-- equal to Theme[key] between calls, so matching stays reliable for the
-	-- whole drag.
 	for _, inst in ipairs(self._screenGui:GetDescendants()) do
 		if inst:IsA("GuiObject") then
 			local ok, bg = pcall(function() return inst.BackgroundColor3 end)
@@ -1470,18 +1447,6 @@ function WM:SetThemeColor(key, color)
 	Theme[key] = color
 end
 
--- Window:SetBackground(SourceOrConfig) — sits behind everything else inside
--- the hub as a backdrop. You can pass either:
---   * a bare asset/source string or number:
---       Window:SetBackground(123456789)
---       Window:SetBackground("rbxassetid://123456789")
---       Window:SetBackground(getcustomasset("cat.png"))
---   * or the old config table form:
---       Window:SetBackground({ Type = "Video", Texture = "rbxassetid://...", Volume = 0 })
---
--- If you pass a bare local filename and the executor exposes getcustomasset(),
--- it will be resolved automatically before being assigned to the ImageLabel or
--- VideoFrame. Otherwise, any valid Roblox content-id string is accepted as-is.
 function WM:SetBackground(input)
 	local config = type(input) == "table" and input or { Texture = input }
 
@@ -1500,10 +1465,6 @@ function WM:SetBackground(input)
 		return
 	end
 
-	-- Convenience: if someone passes a local filename directly (cat.png,
-	-- wallpaper.jpg, etc.) and the executor supports getcustomasset(), resolve
-	-- it here. Any already-resolved asset URI (rbxassetid://..., rbxasset://...)
-	-- is left untouched.
 	local lower = texture:lower()
 	if not (lower:match("^rbxassetid://") or lower:match("^rbxasset://")) then
 		local looksLikeImage = lower:match("%.png$") or lower:match("%.jpg$") or lower:match("%.jpeg$") or lower:match("%.gif$") or lower:match("%.img$")
@@ -1548,7 +1509,6 @@ function WM:SetBackground(input)
 	return bg
 end
 
--- Window:ClearBackground() — removes whatever SetBackground added, if anything.
 function WM:ClearBackground()
 	if self._background then
 		self._background:Destroy()
@@ -1556,21 +1516,10 @@ function WM:ClearBackground()
 	end
 end
 
--- Window:RegisterCommand("keyword", function(window, argString, args) ... end)
--- adds a command the title-bar command palette runs when that first word
--- (case-insensitive) is typed and confirmed. Anything typed after the
--- keyword is handed back as `argString` (raw text) and `args` (a table of
--- whitespace-split words) — e.g. typing "speed 50" calls the "speed"
--- command with argString "50" and args {"50"}. A "T-notif" test command is
--- registered by default; call this to add your own (e.g. ESP toggles, or
--- see the AdminCommands example plugin for a fuller admin-panel pattern).
 function WM:RegisterCommand(keyword, fn)
 	self._commands[tostring(keyword):lower()] = fn
 end
 
--- Window:SetSpotlight(true/false) — dims the rest of the hub while a
--- dropdown, color picker, or similar popover is open, drawing focus to it.
--- Reference-counted so two popovers opening/closing don't fight each other.
 function WM:SetSpotlight(active)
 	if active then
 		self._spotlightCount += 1
@@ -1582,7 +1531,6 @@ function WM:SetSpotlight(active)
 	tween(self._spotlightOverlay, { BackgroundTransparency = shouldShow and 0.5 or 1 }, 0.2)
 end
 
--- === NEW: Window:SetCornerRadius ===
 function WM:SetCornerRadius(radius)
 	local main = self._main
 	local corners = main:FindFirstChild("UICorner")
@@ -1590,7 +1538,6 @@ function WM:SetCornerRadius(radius)
 		corners.CornerRadius = UDim.new(0, radius)
 	end
 	
-	-- Update all child corners
 	for _, child in ipairs(main:GetDescendants()) do
 		if child:IsA("UICorner") then
 			child.CornerRadius = UDim.new(0, radius)
@@ -1598,7 +1545,6 @@ function WM:SetCornerRadius(radius)
 	end
 end
 
--- === NEW: Window:SetOpacity ===
 function WM:SetOpacity(transparency)
 	local main = self._main
 	if transparency >= 0 and transparency <= 1 then
@@ -1606,9 +1552,17 @@ function WM:SetOpacity(transparency)
 	end
 end
 
--- === NEW: Window:GetActiveTab ===
 function WM:GetActiveTab()
 	return self._currentPageEntry
+end
+
+-- === NEW: Export/Import Config ===
+function WM:ExportConfig(name)
+	return Library:ExportConfig(name)
+end
+
+function WM:ImportConfig(jsonText)
+	return Library:ImportConfig(jsonText, self)
 end
 
 function WM:CreateTab(name, config)
@@ -1741,8 +1695,6 @@ function WM:CreateTab(name, config)
 
 	tabButton.MouseButton1Click:Connect(selectTab)
 
-	-- Static glow on hover (desktop only — MouseEnter/Leave never fire on touch),
-	-- skipped while this tab is the selected one (already has the breathing glow)
 	tabButton.MouseEnter:Connect(function()
 		if self._currentPageEntry ~= tabEntry and not tabButton:FindFirstChild("_HoverGlow") then
 			create("UIStroke", { Name = "_HoverGlow", Color = Theme.Accent, Thickness = 1.5, Transparency = 0.5 }).Parent = tabButton
@@ -1765,32 +1717,6 @@ end
 Library.TabMethods = {}
 local TM = Library.TabMethods
 
--- ===================== ELEMENT MANAGEMENT =====================
--- Most element-creation functions below funnel their return value through
--- Library:_wrapElement(root, value) so every element gains the same four
--- methods, regardless of whether it normally returns a {Set,Get} handle, a
--- Section/Card-style nested-page object, or (for a few elements) a raw
--- Instance:
---   :Destroy()             — removes the element's UI entirely
---   :SetVisible(bool)       — shows/hides it
---   :SetDisabled(bool)      — dims it and blocks input via a small overlay,
---                              with no per-element wiring required
---   :Refresh()               — for elements with Set/Get, re-applies
---                              Get() through Set() to force a visual
---                              resync; KeybindList/NotificationCenter/
---                              PluginManager override this with their own
---                              rebuild-from-source logic instead
---
--- KNOWN, DELIBERATE EXCEPTION: Tab:CreateLabel() keeps returning the raw
--- TextLabel Instance, unwrapped. DevSuite.lua (already shipped) depends on
--- that — it does `fpsLabel.Text = ...` and `fpsLabel.AncestryChanged:Connect(...)`
--- directly on the return value. Wrapping it would silently break that
--- plugin. :Destroy() and .Visible already work on it natively (real
--- Instance methods/properties) either way; :SetDisabled()/:Refresh() are
--- the only things a label genuinely loses by keeping this shape — and a
--- static label rarely needs either. CreateThemeEditor is also left
--- unwrapped: it's a composite of a label + two color pickers with no
--- single root to hang one overlay/visibility toggle on.
 function Library:_wrapElement(root, value)
 	local handle
 	if type(value) == "table" then
@@ -1819,7 +1745,7 @@ function Library:_wrapElement(root, value)
 					BackgroundColor3 = Theme.Background,
 					BackgroundTransparency = 0.45,
 					ZIndex = 1000,
-					Active = true, -- swallows clicks/touches so nothing underneath is reachable
+					Active = true,
 				})
 				overlay.Parent = root
 			end
@@ -1835,15 +1761,34 @@ function Library:_wrapElement(root, value)
 		end
 	end
 
+	-- Add sound support to handle
+	handle.PlaySound = function(_, soundId, volume)
+		Library:PlaySound(soundId, volume)
+	end
+	
+	handle.PlayHaptic = function(_)
+		Library:PlayHaptic()
+	end
+
 	return handle
 end
 
--- Sections group elements visually inside a tab, like Orion's :AddSection
+-- ===================== CUSTOM ELEMENT DISPATCH =====================
+function TM:CreateCustom(name, config)
+	local constructor = Library._customElements[name]
+	if not constructor then
+		warn("[MobileUILib] Unknown custom element: " .. tostring(name))
+		return nil
+	end
+	return constructor(self, config)
+end
+
+-- ===================== SECTION =====================
 function TM:CreateSection(name)
 	local touch = self._touch
 
 	local container = create("Frame", {
-		Size = UDim2.new(1, 0, 0, touch and 40 or 30), -- grows via AutomaticSize
+		Size = UDim2.new(1, 0, 0, touch and 40 or 30),
 		BackgroundColor3 = Theme.Header,
 		AutomaticSize = Enum.AutomaticSize.Y,
 	}, {
@@ -1873,7 +1818,6 @@ function TM:CreateSection(name)
 		LayoutOrder = 0,
 	}).Parent = container
 
-	-- A Section behaves just like a Tab (same element methods), but nests inside the tab's page
 	local Section = setmetatable({
 		_page = container,
 		_touch = touch,
@@ -1884,6 +1828,7 @@ function TM:CreateSection(name)
 	return Library:_wrapElement(container, Section)
 end
 
+-- ===================== LABEL =====================
 function TM:CreateLabel(text)
 	local touch = self._touch
 	local label = create("TextLabel", {
@@ -1899,21 +1844,18 @@ function TM:CreateLabel(text)
 	return label
 end
 
+-- ===================== BUTTON =====================
 function TM:CreateButton(config)
 	config = config or {}
 	local touch = self._touch
 	local callback = config.Callback or function() end
+	local soundId = config.Sound
+	local haptic = config.Haptic
 
-	-- NOTE: the stroke lives on this wrapper Frame (Text = "" by definition,
-	-- since Frames have no Text property), not on the TextButton itself.
-	-- Roblox's UIStroke outlines BOTH a frame's border and any text glyphs
-	-- when applied directly to a Text-bearing instance, which produced an
-	-- orange-ish fringe around the label in Light mode. Keeping the stroke on
-	-- a non-text holder and the label as a separate child avoids that.
 	local btn = create("TextButton", {
 		Text = "",
 		BackgroundColor3 = Theme.Element,
-		Size = UDim2.new(1, 0, 0, touch and 46 or 34), -- tall enough for a finger tap
+		Size = UDim2.new(1, 0, 0, touch and 46 or 34),
 		AutoButtonColor = false,
 	}, { corner(12), stroke() })
 	btn.Parent = self._page
@@ -1935,6 +1877,10 @@ function TM:CreateButton(config)
 		task.delay(0.1, function()
 			tween(btn, { BackgroundColor3 = Theme.Element }, 0.1)
 		end)
+		
+		if soundId then Library:PlaySound(soundId) end
+		if haptic then Library:PlayHaptic() end
+		
 		local ok, err = pcall(callback)
 		if not ok then warn("[MobileUILib] Button callback error: " .. tostring(err)) end
 	end)
@@ -1942,6 +1888,7 @@ function TM:CreateButton(config)
 	return Library:_wrapElement(btn)
 end
 
+-- ===================== TOGGLE =====================
 function TM:CreateToggle(config)
 	config = config or {}
 	local touch = self._touch
@@ -1968,7 +1915,6 @@ function TM:CreateToggle(config)
 		TextXAlignment = Enum.TextXAlignment.Left,
 	}).Parent = holder
 
-	-- Big touch-friendly switch (min 44x24 hit target)
 	local switchBg = create("Frame", {
 		Size = UDim2.new(0, touch and 50 or 40, 0, touch and 28 or 22),
 		Position = UDim2.new(1, touch and -60 or -48, 0.5, 0),
@@ -2002,14 +1948,12 @@ function TM:CreateToggle(config)
 				or UDim2.new(0, 3, 0.5, 0)
 		}, 0.15)
 		if config.Flag then Library:SetFlag(config.Flag, state) end
+		playInteractionSound("toggle")
 		local ok, err = pcall(callback, state)
 		if not ok then warn("[MobileUILib] Toggle callback error: " .. tostring(err)) end
 	end)
 
 	local handle = { Set = function(_, value)
-		-- Was previously only updating `state` + the flag with no visual
-		-- change — a saved/loaded Toggle value would be correct in
-		-- Library.Flags but the switch itself would look untouched.
 		state = value
 		switchBg.BackgroundColor3 = state and Theme.Accent or Color3.fromRGB(60, 60, 68)
 		knob.Position = state
@@ -2021,6 +1965,7 @@ function TM:CreateToggle(config)
 	return Library:_wrapElement(holder, handle)
 end
 
+-- ===================== SLIDER =====================
 function TM:CreateSlider(config)
 	config = config or {}
 	local touch = self._touch
@@ -2050,7 +1995,6 @@ function TM:CreateSlider(config)
 	})
 	label.Parent = holder
 
-	-- Bigger track height on mobile so it's easy to grab with a finger
 	local track = create("Frame", {
 		Size = UDim2.new(1, -24, 0, touch and 14 or 8),
 		Position = UDim2.new(0, 12, 1, touch and -22 or -16),
@@ -2065,7 +2009,6 @@ function TM:CreateSlider(config)
 	}, { corner(10) })
 	fill.Parent = track
 
-	-- Invisible larger hit area around the thin track, for easier touch dragging
 	local hitArea = create("TextButton", {
 		Text = "",
 		BackgroundTransparency = 1,
@@ -2119,6 +2062,7 @@ function TM:CreateSlider(config)
 	return Library:_wrapElement(holder, handle)
 end
 
+-- ===================== TEXTBOX =====================
 function TM:CreateTextbox(config)
 	config = config or {}
 	local touch = self._touch
@@ -2173,21 +2117,15 @@ function TM:CreateTextbox(config)
 	return Library:_wrapElement(holder, handle)
 end
 
--- Alias so the API is consistent regardless of casing preference —
--- Tab:CreateTextBox() and Tab:CreateTextbox() are the same function.
 TM.CreateTextBox = TM.CreateTextbox
 
--- Note: keybinds are a PC concept (no physical keys on mobile) but are included
--- for parity since dev panels are often used with a keyboard connected either way.
+-- ===================== KEYBIND =====================
 function TM:CreateKeybind(config)
 	config = config or {}
 	local touch = self._touch
 	local currentKey = config.Default or Enum.KeyCode.Unknown
 	local callback = config.Callback or function() end
 	local listening = false
-	-- Declared before the closures below so they can capture it; populated
-	-- with a real .Get() once `handle` exists, and registered into
-	-- Library.Keybinds at the end of this function.
 	local keybindDescriptor = { Name = config.Name or "Keybind" }
 
 	local holder = create("Frame", {
@@ -2250,9 +2188,6 @@ function TM:CreateKeybind(config)
 			Library.KeybindChanged:Fire(keybindDescriptor)
 		end,
 		Get = function() return currentKey end,
-		-- Custom Destroy (checked by _wrapElement before it supplies the
-		-- generic one): a destroyed Keybind shouldn't linger in
-		-- CreateKeybindList forever, so unregister it first.
 		Destroy = function(_)
 			for i, d in ipairs(Library.Keybinds) do
 				if d == keybindDescriptor then
@@ -2266,8 +2201,6 @@ function TM:CreateKeybind(config)
 	}
 	if config.Flag then Library.FlagElements[config.Flag] = handle end
 
-	-- Register so Tab:CreateKeybindList() can list this binding (and stay in
-	-- sync with it) without needing to know it exists ahead of time.
 	keybindDescriptor.Get = handle.Get
 	table.insert(Library.Keybinds, keybindDescriptor)
 	Library.KeybindRegistered:Fire(keybindDescriptor)
@@ -2275,6 +2208,7 @@ function TM:CreateKeybind(config)
 	return Library:_wrapElement(holder, handle)
 end
 
+-- ===================== COLOR PICKER =====================
 function TM:CreateColorPicker(config)
 	config = config or {}
 	local touch = self._touch
@@ -2458,11 +2392,7 @@ function TM:CreateColorPicker(config)
 	return handle
 end
 
--- Tab:CreateThemeEditor() — exposes two color pickers wired to
--- Window:SetThemeColor: "UI Color" (Theme.Background) and "Toggle Button
--- Color" (Theme.ToggleButton — kept separate from Theme.Element so this
--- doesn't also recolor every button/toggle/dropdown in the hub). The yellow
--- Accent is deliberately not exposed here; it's the fixed "corn" brand color.
+-- ===================== THEME EDITOR =====================
 function TM:CreateThemeEditor(config)
 	config = config or {}
 	local window = self._window
@@ -2490,6 +2420,7 @@ function TM:CreateThemeEditor(config)
 	})
 end
 
+-- ===================== DROPDOWN =====================
 function TM:CreateDropdown(config)
 	config = config or {}
 	local touch = self._touch
@@ -2500,7 +2431,7 @@ function TM:CreateDropdown(config)
 
 	local closedH = touch and 46 or 34
 	local itemHeight = touch and 40 or 30
-	local maxVisibleItems = 6 -- caps the panel height regardless of option count
+	local maxVisibleItems = 6
 	local totalHeight = #options * itemHeight
 	local panelHeight = math.min(totalHeight, maxVisibleItems * itemHeight)
 
@@ -2529,7 +2460,6 @@ function TM:CreateDropdown(config)
 	})
 	mainBtn.Parent = holder
 
-	-- Scrollable + height-capped so long option lists (e.g. 50 items) don't blow up the UI
 	local optionsFrame = create("ScrollingFrame", {
 		Size = UDim2.new(1, 0, 0, panelHeight),
 		Position = UDim2.new(0, 0, 0, closedH),
@@ -2565,6 +2495,7 @@ function TM:CreateDropdown(config)
 			end
 			tween(holder, { Size = UDim2.new(1, 0, 0, closedH) }, 0.15)
 			if config.Flag then Library:SetFlag(config.Flag, selected) end
+			playInteractionSound("dropdown")
 			local ok, err = pcall(callback, selected)
 			if not ok then warn("[MobileUILib] Dropdown callback error: " .. tostring(err)) end
 		end)
@@ -2577,6 +2508,7 @@ function TM:CreateDropdown(config)
 			shiftZIndex(holder, open and 50 or -50)
 		end
 		tween(holder, { Size = UDim2.new(1, 0, 0, open and (closedH + panelHeight) or closedH) }, 0.15)
+		playInteractionSound("dropdown")
 	end)
 
 	local handle = { Set = function(_, value)
@@ -2588,9 +2520,7 @@ function TM:CreateDropdown(config)
 	return handle
 end
 
--- Tab:CreateSearch() — filters this tab/section's own elements by name as you type.
--- Roblox has no fuzzy "search across the whole hub" primitive without a manual
--- index, so this searches within the tab/section it's placed in.
+-- ===================== SEARCH =====================
 function TM:CreateSearch(config)
 	config = config or {}
 	local touch = self._touch
@@ -2629,8 +2559,6 @@ function TM:CreateSearch(config)
 		local anyVisible = false
 		for _, child in ipairs(page:GetChildren()) do
 			if child:IsA("GuiObject") and child ~= box and child ~= noResults then
-				-- MUI_Search covers name + keywords + description; MUI_Name is the
-				-- older, name-only fallback for any element that predates it.
 				local haystack = child:GetAttribute("MUI_Search") or child:GetAttribute("MUI_Name")
 				if haystack then
 					local match = query == "" or haystack:lower():find(query, 1, true) ~= nil
@@ -2645,20 +2573,13 @@ function TM:CreateSearch(config)
 	return box
 end
 
--- Tab:CreateDiscordButton({ Name = "Join Discord", Invite = "discord.gg/xxxx" })
--- IMPORTANT: Roblox gives LocalScripts no way to write to the OS clipboard —
--- that API exists only for Studio plugins, not live games, for security
--- reasons. This can't be faked as a real one-tap copy. Instead it opens a
--- popup with a selectable text field so the player can copy it manually
--- (long-press → select all → copy on mobile, or click + Ctrl+C on PC).
+-- ===================== DISCORD BUTTON =====================
 function TM:CreateDiscordButton(config)
 	config = config or {}
 	local touch = self._touch
 	local invite = config.Invite or "discord.gg/your-invite"
 	local screenGui = self._screenGui
 
-	-- See CreateButton for why the stroke sits on this non-text wrapper
-	-- instead of directly on a TextButton with Text set.
 	local btn = create("TextButton", {
 		Text = "",
 		BackgroundColor3 = Theme.Element,
@@ -2756,14 +2677,7 @@ function TM:CreateDiscordButton(config)
 	return btn
 end
 
--- ===================== BASIC ELEMENTS =====================
--- Lighter-weight, mostly-static elements for laying out and grouping
--- content rather than taking input. Same conventions as everything else
--- above: create()/corner()/stroke() helpers, Theme table, touch-aware
--- sizing, setSearchMeta for Tab:CreateSearch integration.
-
--- Tab:CreateDivider(config?) — a plain 1px separator line, or a labeled
--- one (small caption above the line) if config.Name is given.
+-- ===================== DIVIDER =====================
 function TM:CreateDivider(config)
 	config = config or {}
 	local touch = self._touch
@@ -2798,17 +2712,13 @@ function TM:CreateDivider(config)
 	return holder
 end
 
--- Tab:CreateCard(config?) — a visually distinct container (optional Title/
--- Subtitle) that behaves exactly like a Section: the object it returns
--- supports every Tab/Section method, so you can build normal elements
--- inside it. Useful for grouping related info/controls with more visual
--- weight than a plain Section, e.g. "Account" or "Server Info" blocks.
+-- ===================== CARD =====================
 function TM:CreateCard(config)
 	config = config or {}
 	local touch = self._touch
 
 	local card = create("Frame", {
-		Size = UDim2.new(1, 0, 0, touch and 40 or 30), -- grows via AutomaticSize
+		Size = UDim2.new(1, 0, 0, touch and 40 or 30),
 		BackgroundColor3 = Theme.Element,
 		AutomaticSize = Enum.AutomaticSize.Y,
 	}, {
@@ -2856,7 +2766,6 @@ function TM:CreateCard(config)
 		}).Parent = card
 	end
 
-	-- Behaves just like a Section: same element methods, nested one level deeper
 	local Card = setmetatable({
 		_page = card,
 		_touch = touch,
@@ -2867,9 +2776,7 @@ function TM:CreateCard(config)
 	return Card
 end
 
--- Tab:CreateParagraph(config?) — { Title?, Text } multi-line, auto-wrapping
--- body text. Unlike CreateLabel (single line, fixed height), this element's
--- height grows with content via AutomaticSize.
+-- ===================== PARAGRAPH =====================
 function TM:CreateParagraph(config)
 	config = config or {}
 	local touch = self._touch
@@ -2929,10 +2836,7 @@ function TM:CreateParagraph(config)
 	}
 end
 
--- Tab:CreateImage(config?) — { Image | AssetId, Name?, Height?, ScaleType? }.
--- `Image`/`AssetId` accepts a raw numeric id, a bare id string, or a full
--- "rbxassetid://..." string. Optional Name renders as a caption bar along
--- the bottom edge, like a thumbnail card.
+-- ===================== IMAGE =====================
 function TM:CreateImage(config)
 	config = config or {}
 	local touch = self._touch
@@ -2960,9 +2864,6 @@ function TM:CreateImage(config)
 		ScaleType = config.ScaleType or Enum.ScaleType.Crop,
 	})
 	img.Parent = holder
-	-- Decorative content — SetTheme's reverse color-lookup shouldn't try to
-	-- retint an arbitrary picture (same MUI_NoTheme convention used to fix
-	-- the floating-button icon disappearing on theme switch).
 	img:SetAttribute("MUI_NoTheme", true)
 
 	if config.Name then
@@ -2987,10 +2888,7 @@ function TM:CreateImage(config)
 	}
 end
 
--- Tab:CreateProgressBar(config?) — { Name?, Min?, Max?, Default?, Flag? }.
--- Animated fill (tweened, and automatically instant under ReducedMotion
--- since it goes through the shared tween() helper) plus a live percentage
--- readout.
+-- ===================== PROGRESS BAR =====================
 function TM:CreateProgressBar(config)
 	config = config or {}
 	local touch = self._touch
@@ -3068,15 +2966,7 @@ function TM:CreateProgressBar(config)
 	return handle
 end
 
--- ===================== ADVANCED ELEMENTS =====================
--- Unlike the basic elements above, these three read/write shared Library
--- state (Library.Keybinds, Library.NotificationHistory) populated by other
--- parts of the file, so they behave more like live dashboards than
--- standalone inputs.
-
--- Tab:CreateKeybindList(config?) — displays every keybind registered via
--- Tab:CreateKeybind() across the whole hub (any tab, any plugin), and stays
--- live-updated as bindings are added or rebound.
+-- ===================== KEYBIND LIST =====================
 function TM:CreateKeybindList(config)
 	config = config or {}
 	local touch = self._touch
@@ -3119,8 +3009,8 @@ function TM:CreateKeybindList(config)
 		LayoutOrder = 1,
 	})
 
-	local rowFrames = {} -- descriptor -> its row Frame, so unregistering can remove exactly one row
-	local rowLabels = {} -- descriptor -> its key-value TextLabel, for live updates
+	local rowFrames = {}
+	local rowLabels = {}
 
 	local function keyText(descriptor)
 		local ok, key = pcall(descriptor.Get)
@@ -3187,7 +3077,6 @@ function TM:CreateKeybindList(config)
 	end)
 	local unregisteredConn = Library.KeybindUnregistered:Connect(removeRow)
 
-	-- Stop listening once this list is torn down (tab destroyed, hub closed).
 	holder.AncestryChanged:Connect(function(_, parent)
 		if not parent then
 			if registeredConn then registeredConn:Disconnect() end
@@ -3199,12 +3088,7 @@ function TM:CreateKeybindList(config)
 	return Library:_wrapElement(holder, { Refresh = function(_) rebuildAll() end })
 end
 
--- Tab:CreateColorGradient(config?) — { Name?, Stops = {Color3, Color3, ...},
--- Flag?, Callback? }. Renders a live gradient preview plus one
--- Tab:CreateColorPicker per stop (reusing that element wholesale rather
--- than re-implementing an HSV wheel), nested inside its own holder so
--- pickers stack visually within the gradient card instead of spilling
--- onto the parent tab/section.
+-- ===================== COLOR GRADIENT =====================
 function TM:CreateColorGradient(config)
 	config = config or {}
 	local touch = self._touch
@@ -3260,8 +3144,6 @@ function TM:CreateColorGradient(config)
 	local previewGradient = create("UIGradient", { Color = buildSequence(stops) })
 	previewGradient.Parent = preview
 
-	-- Nested page so each stop's ColorPicker parents inside `holder` (this
-	-- gradient's own frame) instead of self._page (the tab/section's).
 	local GradientPage = setmetatable({
 		_page = holder,
 		_touch = touch,
@@ -3313,10 +3195,7 @@ function TM:CreateColorGradient(config)
 	return handle
 end
 
--- Tab:CreateNotificationCenter(config?) — { Name? }. Lists every
--- notification logged via Window:Notify / ctx:Notify (newest first, capped
--- at Library.MAX_NOTIFICATION_HISTORY), with a Clear button. Updates live
--- as new notifications come in, even ones fired from a different tab.
+-- ===================== NOTIFICATION CENTER =====================
 function TM:CreateNotificationCenter(config)
 	config = config or {}
 	local touch = self._touch
@@ -3393,8 +3272,6 @@ function TM:CreateNotificationCenter(config)
 		local row = create("Frame", {
 			Size = UDim2.new(1, 0, 0, rowHeight),
 			BackgroundColor3 = Theme.ElementHover,
-			-- Negative so higher Seq (more recent) sorts first under
-			-- SortOrder.LayoutOrder's ascending order.
 			LayoutOrder = -entry.Seq,
 		}, {
 			corner(8),
@@ -3471,9 +3348,7 @@ function TM:CreateNotificationCenter(config)
 	return holder
 end
 
--- ===================== NEW ELEMENTS =====================
-
--- === NEW: Tab:CreateTimer ===
+-- ===================== TIMER =====================
 function TM:CreateTimer(config)
     config = config or {}
     local touch = self._touch
@@ -3543,7 +3418,6 @@ function TM:CreateTimer(config)
         end
     end
 
-    -- Start/Pause button
     local startBtn = create("TextButton", {
         Text = "▶",
         Font = Enum.Font.GothamBold,
@@ -3554,7 +3428,6 @@ function TM:CreateTimer(config)
     }, { corner(8) })
     startBtn.Parent = btnRow
 
-    -- Reset button
     local resetBtn = create("TextButton", {
         Text = "⟳",
         Font = Enum.Font.GothamBold,
@@ -3568,7 +3441,6 @@ function TM:CreateTimer(config)
     startBtn.MouseButton1Click:Connect(togglePause)
     resetBtn.MouseButton1Click:Connect(resetTimer)
 
-    -- Timer loop
     local connection
     local function startTimerLoop()
         if connection then connection:Disconnect() end
@@ -3621,7 +3493,7 @@ function TM:CreateTimer(config)
     return Library:_wrapElement(holder, handle)
 end
 
--- === NEW: Tab:CreateChecklist ===
+-- ===================== CHECKLIST =====================
 function TM:CreateChecklist(config)
     config = config or {}
     local touch = self._touch
@@ -3755,65 +3627,273 @@ function TM:CreateChecklist(config)
     return Library:_wrapElement(holder, handle)
 end
 
+-- ===================== NEW: RADIO BUTTON GROUP =====================
+function TM:CreateRadioGroup(config)
+	config = config or {}
+	local touch = self._touch
+	local options = config.Options or {}
+	local selected = config.Default or options[1]
+	local callback = config.Callback or function() end
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, touch and 40 or 30),
+		BackgroundColor3 = Theme.Element,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, { corner(12), stroke() })
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Radio Group")
+
+	if config.Flag then Library:SetFlag(config.Flag, selected) end
+
+	create("TextLabel", {
+		Text = config.Name or "Select Option",
+		Font = Enum.Font.GothamBold,
+		TextSize = touch and 15 or 13,
+		TextColor3 = Theme.Text,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, touch and 24 or 18),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = 0,
+	}).Parent = holder
+
+	local list = create("Frame", {
+		Size = UDim2.new(1, -10, 0, 0),
+		Position = UDim2.new(0, 5, 0, touch and 28 or 22),
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, {
+		create("UIListLayout", {
+			Padding = UDim.new(0, 4),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+		create("UIPadding", {
+			PaddingBottom = UDim.new(0, 6),
+		}),
+	})
+	list.Parent = holder
+
+	local radioButtons = {}
+
+	for i, opt in ipairs(options) do
+		local row = create("Frame", {
+			Size = UDim2.new(1, 0, 0, touch and 30 or 24),
+			BackgroundTransparency = 1,
+			LayoutOrder = i,
+		}, {
+			create("UIListLayout", {
+				FillDirection = Enum.FillDirection.Horizontal,
+				Padding = UDim.new(0, 8),
+				VerticalAlignment = Enum.VerticalAlignment.Center,
+			}),
+		})
+		row.Parent = list
+
+		local radioBtn = create("TextButton", {
+			Text = (opt == selected) and "◉" or "○",
+			Font = Enum.Font.GothamBold,
+			TextSize = touch and 20 or 18,
+			TextColor3 = (opt == selected) and Theme.Accent or Theme.SubText,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(0, touch and 26 or 22, 1, 0),
+		})
+		radioBtn.Parent = row
+
+		local label = create("TextLabel", {
+			Text = tostring(opt),
+			Font = Enum.Font.Gotham,
+			TextSize = touch and 14 or 12,
+			TextColor3 = (opt == selected) and Theme.Text or Theme.SubText,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 1, 0),
+			TextXAlignment = Enum.TextXAlignment.Left,
+		})
+		label.Parent = row
+
+		radioButtons[opt] = { btn = radioBtn, label = label }
+
+		radioBtn.MouseButton1Click:Connect(function()
+			if opt == selected then return end
+			
+			for oldOpt, data in pairs(radioButtons) do
+				data.btn.Text = "○"
+				data.btn.TextColor3 = Theme.SubText
+				data.label.TextColor3 = Theme.SubText
+			end
+			
+			selected = opt
+			radioBtn.Text = "◉"
+			radioBtn.TextColor3 = Theme.Accent
+			label.TextColor3 = Theme.Text
+			
+			if config.Flag then Library:SetFlag(config.Flag, selected) end
+			playInteractionSound("click")
+			local ok, err = pcall(callback, selected)
+			if not ok then warn("[MobileUILib] RadioGroup callback error: " .. tostring(err)) end
+		end)
+	end
+
+	local handle = {
+		Set = function(_, value)
+			if not radioButtons[value] then return end
+			for oldOpt, data in pairs(radioButtons) do
+				data.btn.Text = "○"
+				data.btn.TextColor3 = Theme.SubText
+				data.label.TextColor3 = Theme.SubText
+			end
+			selected = value
+			radioButtons[value].btn.Text = "◉"
+			radioButtons[value].btn.TextColor3 = Theme.Accent
+			radioButtons[value].label.TextColor3 = Theme.Text
+			if config.Flag then Library:SetFlag(config.Flag, selected) end
+		end,
+		Get = function() return selected end,
+	}
+	if config.Flag then Library.FlagElements[config.Flag] = handle end
+	return Library:_wrapElement(holder, handle)
+end
+
+-- ===================== NEW: MULTI-SELECT DROPDOWN =====================
+function TM:CreateMultiDropdown(config)
+	config = config or {}
+	local touch = self._touch
+	local options = config.Options or {}
+	local selected = config.Default or {}
+	if type(selected) ~= "table" then selected = {} end
+	local callback = config.Callback or function() end
+	local open = false
+
+	local closedH = touch and 46 or 34
+	local itemHeight = touch and 40 or 30
+	local maxVisibleItems = 6
+	local totalHeight = #options * itemHeight
+	local panelHeight = math.min(totalHeight, maxVisibleItems * itemHeight)
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, closedH),
+		BackgroundColor3 = Theme.Element,
+		ClipsDescendants = true,
+		ZIndex = 2,
+	}, { corner(12), stroke() })
+	holder.Parent = self._page
+	setSearchMeta(holder, config, "Multi-Select")
+
+	if config.Flag then Library:SetFlag(config.Flag, selected) end
+
+	local selectedText = #selected > 0 and table.concat(selected, ", ") or "None selected"
+	local mainBtn = create("TextButton", {
+		Text = (config.Name or "Select") .. ": " .. selectedText,
+		Font = Enum.Font.GothamMedium,
+		TextSize = touch and 14 or 12,
+		TextColor3 = Theme.Text,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, closedH),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		ZIndex = 2,
+	}, {
+		create("UIPadding", { PaddingLeft = UDim.new(0, 12) }),
+	})
+	mainBtn.Parent = holder
+
+	local optionsFrame = create("ScrollingFrame", {
+		Size = UDim2.new(1, 0, 0, panelHeight),
+		Position = UDim2.new(0, 0, 0, closedH),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ScrollBarThickness = touch and 6 or 4,
+		CanvasSize = UDim2.new(0, 0, 0, totalHeight),
+		ZIndex = 2,
+	}, {
+		create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }),
+	})
+	optionsFrame.Parent = holder
+
+	local optionStates = {}
+
+	for _, opt in ipairs(options) do
+		local isSelected = false
+		for _, s in ipairs(selected) do
+			if s == opt then isSelected = true break end
+		end
+		optionStates[opt] = isSelected
+
+		local optBtn = create("TextButton", {
+			Text = (isSelected and "☑ " or "☐ ") .. tostring(opt),
+			Font = Enum.Font.Gotham,
+			TextSize = touch and 14 or 12,
+			TextColor3 = isSelected and Theme.Accent or Theme.SubText,
+			BackgroundColor3 = Theme.ElementHover,
+			Size = UDim2.new(1, 0, 0, itemHeight),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = 2,
+		}, {
+			create("UIPadding", { PaddingLeft = UDim.new(0, 8) }),
+		})
+		optBtn.Parent = optionsFrame
+
+		optBtn.MouseButton1Click:Connect(function()
+			optionStates[opt] = not optionStates[opt]
+			local isNowSelected = optionStates[opt]
+			optBtn.Text = (isNowSelected and "☑ " or "☐ ") .. tostring(opt)
+			optBtn.TextColor3 = isNowSelected and Theme.Accent or Theme.SubText
+			
+			selected = {}
+			for o, s in pairs(optionStates) do
+				if s then table.insert(selected, o) end
+			end
+			
+			local selectedTextNew = #selected > 0 and table.concat(selected, ", ") or "None selected"
+			mainBtn.Text = (config.Name or "Select") .. ": " .. selectedTextNew
+			
+			if config.Flag then Library:SetFlag(config.Flag, selected) end
+			playInteractionSound("click")
+			local ok, err = pcall(callback, selected)
+			if not ok then warn("[MobileUILib] MultiDropdown callback error: " .. tostring(err)) end
+		end)
+	end
+
+	mainBtn.MouseButton1Click:Connect(function()
+		open = not open
+		if self._window then
+			self._window:SetSpotlight(open)
+			shiftZIndex(holder, open and 50 or -50)
+		end
+		tween(holder, { Size = UDim2.new(1, 0, 0, open and (closedH + panelHeight) or closedH) }, 0.15)
+		playInteractionSound("dropdown")
+	end)
+
+	local handle = {
+		Set = function(_, newSelected)
+			if type(newSelected) ~= "table" then newSelected = {} end
+			selected = newSelected
+			for opt, btn in pairs(optionStates) do
+				local isSelected = false
+				for _, s in ipairs(selected) do
+					if s == opt then isSelected = true break end
+				end
+				optionStates[opt] = isSelected
+				for _, child in ipairs(optionsFrame:GetChildren()) do
+					if child:IsA("TextButton") and child.Text:match(tostring(opt)) then
+						child.Text = (isSelected and "☑ " or "☐ ") .. tostring(opt)
+						child.TextColor3 = isSelected and Theme.Accent or Theme.SubText
+					end
+				end
+			end
+			local selectedTextNew = #selected > 0 and table.concat(selected, ", ") or "None selected"
+			mainBtn.Text = (config.Name or "Select") .. ": " .. selectedTextNew
+			if config.Flag then Library:SetFlag(config.Flag, selected) end
+		end,
+		Get = function() return selected end,
+	}
+	if config.Flag then Library.FlagElements[config.Flag] = handle end
+	return handle
+end
+
 -- ===================== PLUGIN SYSTEM =====================
--- Plugins are separate Lua files hosted externally (GitHub raw, Pastefy,
--- etc.) that extend the hub without touching this file. Load them with:
---
---   local Corn = loadstring(game:HttpGet("https://.../CornUi.lua"))()
---   local Window = Corn:CreateWindow({ Name = "My Hub" })
---
---   local Plugins = {
---       "https://raw.githubusercontent.com/you/plugins/main/AdminCommands.lua",
---       "https://raw.githubusercontent.com/you/plugins/main/VideoBackground.lua",
---   }
---   Corn:LoadPlugins(Plugins, Window)
---
--- A plugin file just returns a table:
---
---   return {
---       Name = "Admin Commands",   -- optional, used for Library.Plugins[] + warn() messages
---       Version = "1.0.0",         -- optional, informational only
---       Init = function(ctx)       -- called once, right after the plugin loads
---           ctx:RegisterCommand("speed", function(window, argString)
---               -- ...
---           end)
---       end,
---       Unload = function(ctx)     -- optional — called on Disable/Reload/Unload
---           -- disconnect RunService connections, turn off effects this
---           -- plugin turned on, etc. See the Plugin Manager section below
---           -- for what Unload can and can't clean up.
---       end,
---   }
---
--- `ctx` (the "plugin context") is the only thing a plugin should touch — a
--- small, stable surface over Library/Window internals so plugins don't
--- reach into private fields that might change between versions of this file:
---
---   ctx.Library                                  -- the Library table, for advanced use
---   ctx.Window                                    -- the Window this plugin was loaded against (may be nil)
---   ctx.Player                                     -- Players.LocalPlayer
---   ctx:GetFlag(name) / ctx:SetFlag(name, value)   -- Flag Manager (see top of file)
---   ctx.FlagChanged                                -- Library.FlagChanged event
---   ctx:RegisterTheme(name, themeTable)             -- Custom Themes
---   ctx:RegisterCommand(keyword, fn)                -- Command Palette, needs a window
---   ctx:SetBackground(sourceOrConfig) / ctx:ClearBackground() -- Image/Video background FX, needs a window
---   ctx:CreateTab(name, tabConfig)                  -- adds a tab to the hub, needs a window
---   ctx:Notify(notifConfig)                          -- fires a notification, needs a window
---
--- Every plugin call (loading, Init, and anything routed through ctx) is
--- wrapped in pcall, so one broken or malicious plugin can't take down the
--- hub or the other plugins loaded alongside it.
-
-Library.Plugins = {} -- name (or url, if unnamed) -> the table the plugin returned
-
--- Richer per-plugin bookkeeping for the Plugin Manager (below), kept
--- separate from Library.Plugins above so that existing/simple usage
--- (`Library.Plugins[name]` = the plugin's own returned table) doesn't
--- change shape. Library.PluginRegistry is an ordered array of records:
---   { Name, Url, Version, Enabled, Result, Context, Window }
+Library.Plugins = {}
 Library.PluginRegistry = {}
 local pluginRegistryChangedEvent = Instance.new("BindableEvent")
-Library.PluginRegistryChanged = pluginRegistryChangedEvent.Event -- fires () on any load/enable/disable/reload/unload
+Library.PluginRegistryChanged = pluginRegistryChangedEvent.Event
 
 local function findPluginRecord(name)
 	for _, record in ipairs(Library.PluginRegistry) do
@@ -3837,6 +3917,8 @@ function Library:_makePluginContext(window)
 		LoadConfig = function(_, name) return self_:LoadConfig(name, window) end,
 		ListConfigs = function(_) return self_:ListConfigs() end,
 		DeleteConfig = function(_, name) return self_:DeleteConfig(name) end,
+		ExportConfig = function(_, name) return self_:ExportConfig(name) end,
+		ImportConfig = function(_, jsonText) return self_:ImportConfig(jsonText, window) end,
 
 		ListPlugins = function(_) return self_:ListPlugins() end,
 		DisablePlugin = function(_, name) return self_:DisablePlugin(name) end,
@@ -3875,14 +3957,17 @@ function Library:_makePluginContext(window)
 		Notify = function(_, notifConfig)
 			if window then window:Notify(notifConfig) end
 		end,
+		
+		PlaySound = function(_, soundId, volume)
+			self_:PlaySound(soundId, volume)
+		end,
+		
+		PlayHaptic = function(_)
+			self_:PlayHaptic()
+		end,
 	}
 end
 
--- Library:LoadPlugin(url, window) — fetches, compiles, and runs a single
--- plugin file, returning whatever table it returned (or nil on failure).
--- `window` is optional; pass one so the plugin can use RegisterCommand,
--- SetBackground, CreateTab, and Notify. Plugins that only need Flags/Themes
--- work fine without one.
 function Library:LoadPlugin(url, window)
 	local fetchOk, source = pcall(game.HttpGet, game, url)
 	if not fetchOk then
@@ -3932,10 +4017,6 @@ function Library:LoadPlugin(url, window)
 	return result
 end
 
--- Library:LoadPlugins({ url1, url2, ... }, window) — convenience wrapper
--- that loads a whole list in order, e.g.:
---   local Plugins = { "https://.../AdminCommands.lua" }
---   Corn:LoadPlugins(Plugins, Window)
 function Library:LoadPlugins(urls, window)
 	local loaded = {}
 	for _, url in ipairs(urls or {}) do
@@ -3944,27 +4025,6 @@ function Library:LoadPlugins(urls, window)
 	return loaded
 end
 
--- ===================== PLUGIN MANAGER =====================
--- Enable/Disable/Reload/Unload built on top of LoadPlugin above. An
--- HONEST LIMITATION, not swept under the rug: CornUi.lua currently has no
--- element-teardown API (no Tab:Destroy(), etc. — that's a separate,
--- not-yet-built roadmap item). That means none of the functions below can
--- remove UI a plugin already created (tabs, toggles, ...). What they CAN
--- do reliably:
---   - stop a plugin's *behavior* going forward, if the plugin cooperates
---     by implementing an optional `Unload = function(ctx) ... end` in its
---     returned table (disconnect RunService connections, turn off noclip/
---     fly, etc.) — same shape as `Init`, called on Disable/Reload/Unload.
---   - track what's loaded, its version/url, and whether it's "enabled"
---     for a Plugin Manager UI to display and toggle.
---   - re-run Init on Enable/Reload, which is safe for plugins that don't
---     duplicate UI on repeat Init calls, and will visibly duplicate tabs/
---     elements for plugins that do. This is a real gap, not a bug in the
---     Manager — write Init idempotently (check ctx.Window for an existing
---     tab by name before creating a new one) if you plan to reload often.
-
--- Library:ListPlugins() — snapshot of every loaded plugin for a Plugin
--- Manager UI: { Name, Version, Url, Enabled }[]
 function Library:ListPlugins()
 	local list = {}
 	for _, record in ipairs(self.PluginRegistry) do
@@ -3978,9 +4038,6 @@ function Library:ListPlugins()
 	return list
 end
 
--- Library:DisablePlugin(name) — calls the plugin's Unload(ctx) if it has
--- one, then marks it disabled. Returns true/false. See the limitation note
--- above: this does not remove UI the plugin already created.
 function Library:DisablePlugin(name)
 	local record = findPluginRecord(name)
 	if not record or not record.Enabled then return false end
@@ -3997,8 +4054,6 @@ function Library:DisablePlugin(name)
 	return true
 end
 
--- Library:EnablePlugin(name) — re-runs Init(ctx) for a previously-disabled
--- plugin. See the Init-duplication caveat above.
 function Library:EnablePlugin(name)
 	local record = findPluginRecord(name)
 	if not record or record.Enabled then return false end
@@ -4015,10 +4070,6 @@ function Library:EnablePlugin(name)
 	return true
 end
 
--- Library:ReloadPlugin(name) — Unload (if present) + re-fetch the plugin's
--- source from its original Url + re-run it fresh, replacing the old
--- Result/Context in place. Only works for plugins loaded via LoadPlugin/
--- LoadPlugins (i.e. anything with a known Url). Returns true/false.
 function Library:ReloadPlugin(name)
 	local record = findPluginRecord(name)
 	if not record or not record.Url then return false end
@@ -4065,8 +4116,6 @@ function Library:ReloadPlugin(name)
 	return true
 end
 
--- Library:UnloadPlugin(name) — Unload (if present) + removes it from the
--- registry and Library.Plugins entirely. Same UI-teardown caveat applies.
 function Library:UnloadPlugin(name)
 	local record = findPluginRecord(name)
 	if not record then return false end
@@ -4090,13 +4139,7 @@ function Library:UnloadPlugin(name)
 	return true
 end
 
--- Tab:CreatePluginManager(config?) — lists every loaded plugin (name,
--- version, enabled state) with Enable/Disable, Reload, and Unload buttons,
--- live-updated via Library.PluginRegistryChanged. See the caveat above the
--- Library:Disable/Enable/Reload/UnloadPlugin functions: none of these
--- remove UI a plugin already created — there's no element-teardown API
--- yet. Reload is hidden for any plugin without a known Url (i.e. anything
--- not loaded through LoadPlugin/LoadPlugins).
+-- ===================== PLUGIN MANAGER =====================
 function TM:CreatePluginManager(config)
 	config = config or {}
 	local touch = self._touch
@@ -4157,9 +4200,6 @@ function TM:CreatePluginManager(config)
 		return b
 	end
 
-	-- Full rebuild on every registry change rather than diffing — plugin
-	-- counts are small (single digits to low dozens), so this stays cheap
-	-- and avoids a whole class of stale-row bugs.
 	local function rebuild()
 		for _, child in ipairs(list:GetChildren()) do
 			if child:IsA("Frame") then child:Destroy() end
@@ -4253,75 +4293,5 @@ function TM:CreatePluginManager(config)
 
 	return holder
 end
-
---[[
-	EXAMPLE PLUGIN — Admin Commands
-	(reference only — this is what a plugin FILE would contain; it isn't run
-	by this library on its own. Save it separately, host it, and load it via
-	Corn:LoadPlugins({ "https://.../AdminCommands.lua" }, Window).)
-
-	Demonstrates turning the title-bar command palette into a small admin
-	panel using RegisterCommand's argument support: typing "speed 50" calls
-	the "speed" command with argString "50".
-
-	return {
-		Name = "Admin Commands",
-		Version = "1.0.0",
-		Init = function(ctx)
-			local player = ctx.Player
-
-			local function getHumanoid()
-				local char = player.Character
-				return char and char:FindFirstChildOfClass("Humanoid")
-			end
-
-			ctx:RegisterCommand("speed", function(window, argString)
-				local n = math.clamp(tonumber(argString) or 16, 1, 100)
-				local hum = getHumanoid()
-				if hum then hum.WalkSpeed = n end
-				window:Notify({ Title = "Speed", Content = "Set to " .. n, Type = "success" })
-			end)
-
-			ctx:RegisterCommand("jp", function(window, argString)
-				local n = math.clamp(tonumber(argString) or 50, 1, 100)
-				local hum = getHumanoid()
-				if hum then hum.JumpPower = n end
-				window:Notify({ Title = "Jump Power", Content = "Set to " .. n, Type = "success" })
-			end)
-
-			ctx:RegisterCommand("fly", function(window, argString)
-				-- Left intentionally simple: this just flips a flag other
-				-- code (e.g. a RenderStepped connection elsewhere in the
-				-- plugin) can read via ctx:GetFlag("Fly"). Wire up the actual
-				-- BodyVelocity/AlignPosition movement to taste.
-				local on = argString:lower() ~= "off"
-				ctx:SetFlag("Fly", on)
-				window:Notify({ Title = "Fly", Content = on and "Enabled" or "Disabled", Type = "info" })
-			end)
-
-			ctx:RegisterCommand("reset-char", function(window)
-				local hum = getHumanoid()
-				if hum then hum.Health = 0 end
-				window:Notify({ Title = "Character", Content = "Reset", Type = "warning" })
-			end)
-		end,
-	}
-]]
-
---[[
-	EXAMPLE PLUGIN — Video Background
-	(reference only, same deal as above)
-
-	return {
-		Name = "Video Background",
-		Init = function(ctx)
-			ctx:SetBackground({
-				Type = "Video",
-				Texture = "rbxassetid://0000000000", -- your video's content id
-				Volume = 0,
-			})
-		end,
-	}
-]]
 
 return Library
