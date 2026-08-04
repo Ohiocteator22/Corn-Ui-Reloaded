@@ -14,6 +14,7 @@ local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
+local Stats = game:GetService("Stats")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -37,6 +38,14 @@ end
 
 function Library:SetFlag(name, value)
 	if not name then return end
+	-- Add type validation
+	if self._flagSchema and self._flagSchema[name] then
+		local expectedType = self._flagSchema[name]
+		if type(value) ~= expectedType then
+			warn("[MobileUILib] Flag '" .. name .. "' expected " .. expectedType .. ", got " .. type(value))
+			return
+		end
+	end
 	Library.Flags[name] = value
 	flagChangedEvent:Fire(name, value)
 end
@@ -288,6 +297,45 @@ local Themes = {
 		Stroke = Color3.fromRGB(212, 212, 220),
 		ToggleButton = Color3.fromRGB(233, 233, 238),
 	},
+	-- === NEW THEME: Ocean ===
+	Ocean = {
+		Background = Color3.fromRGB(8, 20, 40),
+		Header = Color3.fromRGB(12, 30, 50),
+		Accent = Color3.fromRGB(64, 224, 208), -- Turquoise
+		TextOnAccent = Color3.fromRGB(0, 0, 0),
+		Text = Color3.fromRGB(220, 240, 255),
+		SubText = Color3.fromRGB(160, 190, 210),
+		Element = Color3.fromRGB(16, 35, 55),
+		ElementHover = Color3.fromRGB(24, 45, 65),
+		Stroke = Color3.fromRGB(40, 70, 90),
+		ToggleButton = Color3.fromRGB(16, 35, 55),
+	},
+	-- === NEW THEME: Forest ===
+	Forest = {
+		Background = Color3.fromRGB(10, 25, 10),
+		Header = Color3.fromRGB(15, 35, 15),
+		Accent = Color3.fromRGB(80, 200, 80),
+		TextOnAccent = Color3.fromRGB(0, 0, 0),
+		Text = Color3.fromRGB(220, 255, 220),
+		SubText = Color3.fromRGB(160, 200, 160),
+		Element = Color3.fromRGB(15, 35, 15),
+		ElementHover = Color3.fromRGB(25, 45, 25),
+		Stroke = Color3.fromRGB(40, 80, 40),
+		ToggleButton = Color3.fromRGB(15, 35, 15),
+	},
+	-- === NEW THEME: Sunset ===
+	Sunset = {
+		Background = Color3.fromRGB(40, 10, 20),
+		Header = Color3.fromRGB(50, 15, 25),
+		Accent = Color3.fromRGB(255, 140, 60),
+		TextOnAccent = Color3.fromRGB(0, 0, 0),
+		Text = Color3.fromRGB(255, 220, 210),
+		SubText = Color3.fromRGB(210, 160, 150),
+		Element = Color3.fromRGB(50, 15, 25),
+		ElementHover = Color3.fromRGB(65, 25, 35),
+		Stroke = Color3.fromRGB(90, 40, 50),
+		ToggleButton = Color3.fromRGB(50, 15, 25),
+	},
 }
 
 -- Library:RegisterTheme("Name", { Background = Color3..., Accent = ... }) —
@@ -495,6 +543,12 @@ end
 -- ===================== LIBRARY =====================
 function Library:CreateWindow(config)
 	config = config or {}
+	
+	-- === PERFORMANCE MODE CHECK ===
+	if Library.Flags.PerformanceMode then
+		config.Intro = false
+	end
+	
 	local windowName = config.Name or "UI Library"
 	-- Each GUI name owns one window. Keeping the default preserves the original
 	-- single-window behavior, while an external/secondary script can provide a
@@ -878,6 +932,51 @@ function Library:CreateWindow(config)
 		_commands = {
 			["t-notif"] = function(w)
 				w:Notify({ Title = "Test Notification", Content = "This is a test notification.", Type = "info" })
+			end,
+			-- === NEW BUILT-IN COMMANDS ===
+			["theme"] = function(w, argString)
+				local theme = argString:match("^(%S+)")
+				if theme and Themes[theme] then
+					w:SetTheme(theme)
+					w:Notify({ Title = "Theme", Content = "Switched to " .. theme, Type = "success" })
+				else
+					local themes = {}
+					for name in pairs(Themes) do
+						table.insert(themes, name)
+					end
+					w:Notify({ Title = "Themes", Content = "Available: " .. table.concat(themes, ", "), Type = "info" })
+				end
+			end,
+			["save"] = function(w, argString)
+				local name = argString ~= "" and argString or "default"
+				local success = Library:SaveConfig(name)
+				if success then
+					w:Notify({ Title = "Config Saved", Content = "Saved as '" .. name .. "'", Type = "success" })
+				else
+					w:Notify({ Title = "Error", Content = "Failed to save config", Type = "error" })
+				end
+			end,
+			["load"] = function(w, argString)
+				local name = argString ~= "" and argString or "default"
+				local success = Library:LoadConfig(name, w)
+				if success then
+					w:Notify({ Title = "Config Loaded", Content = "Loaded '" .. name .. "'", Type = "success" })
+				else
+					w:Notify({ Title = "Error", Content = "Failed to load config", Type = "error" })
+				end
+			end,
+			["list"] = function(w)
+				local configs = Library:ListConfigs()
+				if #configs > 0 then
+					w:Notify({ Title = "Configs", Content = table.concat(configs, ", "), Type = "info" })
+				else
+					w:Notify({ Title = "Configs", Content = "No saved configs", Type = "info" })
+				end
+			end,
+			["minimize"] = function(w)
+				minimized = not minimized
+				tween(main, { Size = minimized and UDim2.new(main.Size.X.Scale, main.Size.X.Offset, 0, headerHeight) or mainSizeScale }, 0.2)
+				body.Visible = not minimized
 			end,
 		},
 	}, { __index = Library.WindowMethods })
@@ -1481,6 +1580,35 @@ function WM:SetSpotlight(active)
 	local shouldShow = self._spotlightCount > 0
 	self._spotlightOverlay.Active = shouldShow
 	tween(self._spotlightOverlay, { BackgroundTransparency = shouldShow and 0.5 or 1 }, 0.2)
+end
+
+-- === NEW: Window:SetCornerRadius ===
+function WM:SetCornerRadius(radius)
+	local main = self._main
+	local corners = main:FindFirstChild("UICorner")
+	if corners then
+		corners.CornerRadius = UDim.new(0, radius)
+	end
+	
+	-- Update all child corners
+	for _, child in ipairs(main:GetDescendants()) do
+		if child:IsA("UICorner") then
+			child.CornerRadius = UDim.new(0, radius)
+		end
+	end
+end
+
+-- === NEW: Window:SetOpacity ===
+function WM:SetOpacity(transparency)
+	local main = self._main
+	if transparency >= 0 and transparency <= 1 then
+		main.BackgroundTransparency = transparency
+	end
+end
+
+-- === NEW: Window:GetActiveTab ===
+function WM:GetActiveTab()
+	return self._currentPageEntry
 end
 
 function WM:CreateTab(name, config)
@@ -3341,6 +3469,290 @@ function TM:CreateNotificationCenter(config)
 	end)
 
 	return holder
+end
+
+-- ===================== NEW ELEMENTS =====================
+
+-- === NEW: Tab:CreateTimer ===
+function TM:CreateTimer(config)
+    config = config or {}
+    local touch = self._touch
+    local duration = config.Duration or 60
+    local remaining = duration
+    local running = false
+    local paused = false
+
+    local holder = create("Frame", {
+        Size = UDim2.new(1, 0, 0, touch and 80 or 60),
+        BackgroundColor3 = Theme.Element,
+        AutomaticSize = Enum.AutomaticSize.Y,
+    }, { corner(12), stroke() })
+    holder.Parent = self._page
+    setSearchMeta(holder, config, "Timer")
+
+    local timeDisplay = create("TextLabel", {
+        Text = string.format("%02d:%02d", remaining // 60, remaining % 60),
+        Font = Enum.Font.GothamBold,
+        TextSize = touch and 32 or 26,
+        TextColor3 = Theme.Text,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, touch and 36 or 28),
+        TextXAlignment = Enum.TextXAlignment.Center,
+    })
+    timeDisplay.Parent = holder
+
+    local btnRow = create("Frame", {
+        Size = UDim2.new(1, 0, 0, touch and 34 or 26),
+        Position = UDim2.new(0, 0, 1, touch and -34 or -26),
+        BackgroundTransparency = 1,
+    }, {
+        create("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            Padding = UDim.new(0, 6),
+            HorizontalAlignment = Enum.HorizontalAlignment.Center,
+        }),
+    })
+    btnRow.Parent = holder
+
+    local function updateDisplay()
+        timeDisplay.Text = string.format("%02d:%02d", remaining // 60, remaining % 60)
+    end
+
+    local function resetTimer()
+        running = false
+        paused = false
+        remaining = duration
+        updateDisplay()
+        if config.Callback then
+            pcall(config.Callback, "reset", remaining)
+        end
+    end
+
+    local function togglePause()
+        if not running then
+            running = true
+            paused = false
+            if config.Callback then
+                pcall(config.Callback, "start", remaining)
+            end
+        else
+            paused = not paused
+            if config.Callback then
+                pcall(config.Callback, paused and "pause" or "resume", remaining)
+            end
+        end
+    end
+
+    -- Start/Pause button
+    local startBtn = create("TextButton", {
+        Text = "▶",
+        Font = Enum.Font.GothamBold,
+        TextSize = touch and 16 or 14,
+        TextColor3 = Theme.Text,
+        BackgroundColor3 = Theme.ElementHover,
+        Size = UDim2.new(0, touch and 60 or 50, 1, 0),
+    }, { corner(8) })
+    startBtn.Parent = btnRow
+
+    -- Reset button
+    local resetBtn = create("TextButton", {
+        Text = "⟳",
+        Font = Enum.Font.GothamBold,
+        TextSize = touch and 16 or 14,
+        TextColor3 = Theme.Text,
+        BackgroundColor3 = Theme.ElementHover,
+        Size = UDim2.new(0, touch and 60 or 50, 1, 0),
+    }, { corner(8) })
+    resetBtn.Parent = btnRow
+
+    startBtn.MouseButton1Click:Connect(togglePause)
+    resetBtn.MouseButton1Click:Connect(resetTimer)
+
+    -- Timer loop
+    local connection
+    local function startTimerLoop()
+        if connection then connection:Disconnect() end
+        connection = RunService.Heartbeat:Connect(function(delta)
+            if running and not paused and remaining > 0 then
+                remaining = remaining - delta
+                if remaining <= 0 then
+                    remaining = 0
+                    running = false
+                    if config.Callback then
+                        pcall(config.Callback, "complete", remaining)
+                    end
+                end
+                updateDisplay()
+                startBtn.Text = paused and "▶" or "⏸"
+            end
+        end)
+    end
+    startTimerLoop()
+
+    local handle = {
+        Set = function(_, newDuration)
+            duration = newDuration
+            remaining = newDuration
+            resetTimer()
+        end,
+        Get = function() return remaining end,
+        Reset = resetTimer,
+        Start = function()
+            running = true
+            paused = false
+            startBtn.Text = "⏸"
+        end,
+        Pause = function()
+            paused = true
+            startBtn.Text = "▶"
+        end,
+        Resume = function()
+            paused = false
+            startBtn.Text = "⏸"
+        end,
+    }
+
+    holder.AncestryChanged:Connect(function(_, parent)
+        if not parent and connection then
+            connection:Disconnect()
+        end
+    end)
+
+    return Library:_wrapElement(holder, handle)
+end
+
+-- === NEW: Tab:CreateChecklist ===
+function TM:CreateChecklist(config)
+    config = config or {}
+    local touch = self._touch
+    local items = config.Items or {}
+
+    local holder = create("Frame", {
+        Size = UDim2.new(1, 0, 0, touch and 40 or 30),
+        BackgroundColor3 = Theme.Element,
+        AutomaticSize = Enum.AutomaticSize.Y,
+    }, { corner(12), stroke() })
+    holder.Parent = self._page
+    setSearchMeta(holder, config, "Checklist")
+
+    create("TextLabel", {
+        Text = config.Name or "Checklist",
+        Font = Enum.Font.GothamBold,
+        TextSize = touch and 15 or 13,
+        TextColor3 = Theme.Text,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, touch and 24 or 18),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        LayoutOrder = 0,
+    }).Parent = holder
+
+    local list = create("Frame", {
+        Size = UDim2.new(1, -10, 0, 0),
+        Position = UDim2.new(0, 5, 0, touch and 28 or 22),
+        BackgroundTransparency = 1,
+        AutomaticSize = Enum.AutomaticSize.Y,
+    }, {
+        create("UIListLayout", {
+            Padding = UDim.new(0, 4),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+        }),
+        create("UIPadding", {
+            PaddingBottom = UDim.new(0, 6),
+        }),
+    })
+    list.Parent = holder
+
+    local checkStates = {}
+    local checkboxes = {}
+
+    local function updateProgress()
+        local total = #items
+        local done = 0
+        for _, state in pairs(checkStates) do
+            if state then done = done + 1 end
+        end
+        if config.Callback then
+            pcall(config.Callback, done, total, checkStates)
+        end
+    end
+
+    for i, item in ipairs(items) do
+        local row = create("Frame", {
+            Size = UDim2.new(1, 0, 0, touch and 28 or 22),
+            BackgroundTransparency = 1,
+            LayoutOrder = i,
+        }, {
+            create("UIListLayout", {
+                FillDirection = Enum.FillDirection.Horizontal,
+                Padding = UDim.new(0, 8),
+                VerticalAlignment = Enum.VerticalAlignment.Center,
+            }),
+        })
+        row.Parent = list
+
+        local checkBtn = create("TextButton", {
+            Text = "□",
+            Font = Enum.Font.GothamBold,
+            TextSize = touch and 18 or 16,
+            TextColor3 = Theme.SubText,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0, touch and 24 or 20, 1, 0),
+        })
+        checkBtn.Parent = row
+
+        local label = create("TextLabel", {
+            Text = item,
+            Font = Enum.Font.Gotham,
+            TextSize = touch and 14 or 12,
+            TextColor3 = Theme.Text,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 1, 0),
+            TextXAlignment = Enum.TextXAlignment.Left,
+        })
+        label.Parent = row
+
+        checkStates[i] = false
+        checkboxes[i] = checkBtn
+
+        checkBtn.MouseButton1Click:Connect(function()
+            checkStates[i] = not checkStates[i]
+            checkBtn.Text = checkStates[i] and "☑" or "□"
+            checkBtn.TextColor3 = checkStates[i] and Theme.Accent or Theme.SubText
+            updateProgress()
+        end)
+    end
+
+    local handle = {
+        Set = function(_, states)
+            for i, state in ipairs(states) do
+                if checkboxes[i] then
+                    checkStates[i] = state
+                    checkboxes[i].Text = state and "☑" or "□"
+                    checkboxes[i].TextColor3 = state and Theme.Accent or Theme.SubText
+                end
+            end
+            updateProgress()
+        end,
+        Get = function() return checkStates end,
+        Toggle = function(index)
+            if checkboxes[index] then
+                checkStates[index] = not checkStates[index]
+                checkboxes[index].Text = checkStates[index] and "☑" or "□"
+                checkboxes[index].TextColor3 = checkStates[index] and Theme.Accent or Theme.SubText
+                updateProgress()
+            end
+        end,
+        Reset = function()
+            for i in pairs(checkStates) do
+                checkStates[i] = false
+                checkboxes[i].Text = "□"
+                checkboxes[i].TextColor3 = Theme.SubText
+            end
+            updateProgress()
+        end,
+    }
+
+    return Library:_wrapElement(holder, handle)
 end
 
 -- ===================== PLUGIN SYSTEM =====================
