@@ -22,9 +22,9 @@ local Window = Corn:CreateWindow({
 	Name = "⭐ CornUi Showcase",
 	Subtitle = "All Widgets Demo — v1.9.2",
 	Theme = "Ocean",  -- Dark, Light, Ocean, Forest, Sunset, Amethyst, Ruby, Frost, Candy, Midnight, Cyber
-	Icon = 80406291512141,  -- Optional: your icon asset ID
+	Icon = nil,  -- Optional: your icon asset ID
 	Intro = {
-		Image = 80406291512141,
+		Image = nil,
 		Text = "-By Lifeless",
 		Duration = 1.4,
 		Funny = true,
@@ -74,11 +74,11 @@ local btn1 = ButtonSection:CreateButton({
 
 -- Button with Sound & Haptic
 ButtonSection:CreateButton({
-	Name = "🔊 Button with Sound",
-	Sound = "rbxassetid://9120396650",
+	Name = " Button ",
+	Sound = nil,
 	Haptic = true,
 	Callback = function()
-		print("Sound and haptic feedback!")
+		print("haptic feedback!")
 	end
 })
 
