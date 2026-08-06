@@ -1285,6 +1285,8 @@ Cornelius.Packs["Documentation"] = {
 	end
 }
 -- ===================== LIBRARY =====================
+Library.WindowMethods = {}
+local WM = Library.WindowMethods
 function Library:CreateWindow(config)
 	config = config or {}
 	
