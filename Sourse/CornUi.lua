@@ -399,8 +399,6 @@ local Themes = {
 		Stroke = Color3.fromRGB(55, 70, 90),
 		ToggleButton = Color3.fromRGB(25, 35, 50),
 	},
-}
--- ===================== MORE THEMES =====================
 	Candy = {
 		Background = Color3.fromRGB(45, 20, 35),
 		Header = Color3.fromRGB(55, 25, 42),
