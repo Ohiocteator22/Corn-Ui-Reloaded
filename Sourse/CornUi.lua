@@ -155,7 +155,7 @@ end
 
 function Library:SaveConfig(name)
 	if not (writefile) then
-		warn("[MobileUILib] SaveConfig: this executor doesn't expose writefile")
+		warn("[Cornelius] SaveConfig: this executor doesn't expose writefile")
 		return false
 	end
 
@@ -171,13 +171,13 @@ function Library:SaveConfig(name)
 
 	local ok, json = pcall(function() return HttpService:JSONEncode(data) end)
 	if not ok then
-		warn("[MobileUILib] SaveConfig: JSONEncode failed — " .. tostring(json))
+		warn("[Cornelius] SaveConfig: JSONEncode failed — " .. tostring(json))
 		return false
 	end
 
 	local wok, werr = pcall(writefile, configPath(name), json)
 	if not wok then
-		warn("[MobileUILib] SaveConfig: writefile failed — " .. tostring(werr))
+		warn("[Cornelius] SaveConfig: writefile failed — " .. tostring(werr))
 		return false
 	end
 	return true
@@ -185,7 +185,7 @@ end
 
 function Library:LoadConfig(name, window)
 	if not (isfile and readfile) then
-		warn("[MobileUILib] LoadConfig: this executor doesn't expose isfile/readfile")
+		warn("[Cornelius] LoadConfig: this executor doesn't expose isfile/readfile")
 		return false
 	end
 
@@ -197,13 +197,13 @@ function Library:LoadConfig(name, window)
 
 	local readOk, raw = pcall(readfile, path)
 	if not readOk then
-		warn("[MobileUILib] LoadConfig: readfile failed — " .. tostring(raw))
+		warn("[Cornelius] LoadConfig: readfile failed — " .. tostring(raw))
 		return false
 	end
 
 	local decodeOk, data = pcall(function() return HttpService:JSONDecode(raw) end)
 	if not decodeOk or type(data) ~= "table" then
-		warn("[MobileUILib] LoadConfig: malformed config file, ignoring — " .. tostring(data))
+		warn("[Cornelius] LoadConfig: malformed config file, ignoring — " .. tostring(data))
 		return false
 	end
 
@@ -242,7 +242,7 @@ end
 
 function Library:DeleteConfig(name)
 	if not (delfile and isfile) then
-		warn("[MobileUILib] DeleteConfig: this executor doesn't expose delfile/isfile")
+		warn("[Cornelius] DeleteConfig: this executor doesn't expose delfile/isfile")
 		return false
 	end
 	local path = configPath(name)
@@ -250,7 +250,7 @@ function Library:DeleteConfig(name)
 	if not existsOk or not exists then return false end
 	local ok, err = pcall(delfile, path)
 	if not ok then
-		warn("[MobileUILib] DeleteConfig: delfile failed — " .. tostring(err))
+		warn("[Cornelius] DeleteConfig: delfile failed — " .. tostring(err))
 		return false
 	end
 	return true
@@ -269,7 +269,7 @@ function Library:ExportConfig(name)
 	
 	local ok, json = pcall(function() return HttpService:JSONEncode(data) end)
 	if not ok then
-		warn("[MobileUILib] ExportConfig: JSONEncode failed — " .. tostring(json))
+		warn("[Cornelius] ExportConfig: JSONEncode failed — " .. tostring(json))
 		return nil
 	end
 	return json
@@ -278,7 +278,7 @@ end
 function Library:ImportConfig(jsonText, window)
 	local decodeOk, data = pcall(function() return HttpService:JSONDecode(jsonText) end)
 	if not decodeOk or type(data) ~= "table" then
-		warn("[MobileUILib] ImportConfig: malformed config data")
+		warn("[Cornelius] ImportConfig: malformed config data")
 		return false
 	end
 
@@ -440,7 +440,7 @@ local Themes = {
 -- ===================== CUSTOM ELEMENT REGISTRATION API =====================
 function Library:RegisterElement(name, constructor)
 	if type(name) ~= "string" or type(constructor) ~= "function" then
-		warn("[MobileUILib] RegisterElement requires a name string and a constructor function")
+		warn("[COrnelius] RegisterElement requires a name string and a constructor function")
 		return
 	end
 	Library._customElements[name] = constructor
@@ -3705,7 +3705,7 @@ function TM:CreateColorGradient(config)
 	presetDropdown.MouseButton1Click:Connect(function()
 		local presetsList = {}
 		for name in pairs(presets) do table.insert(presetsList, name) end
-		local dropdown = Tab:CreateDropdown({
+		local dropdown = self:CreateDropdown({
 			Name = "Select Preset",
 			Options = presetsList,
 			Callback = function(selected)
