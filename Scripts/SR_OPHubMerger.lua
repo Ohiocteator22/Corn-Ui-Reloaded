@@ -4245,155 +4245,153 @@ local function createTeleportMenu()
 end
 
 -- ============================================================
--- CORNUI UI ELEMENTS
+-- CORNUI UI ELEMENTS (FIXED)
 -- ============================================================
 
--- Store toggle references for cross-tab control
 UI.ToggleRefs = {}
 
 -- Create Main Tab elements
 local MainSection = MainTab:CreateSection("Core Features")
 
 MainSection:CreateButton({
-	Name = "Get Code + Go Barn",
-	Description = "Teleports to Barn and scans for puzzle code",
-	Callback = function()
-		Teleport:ToLocation("Bunker", CodeSearchOrigin, true)
-		Notify("Code", "Searching...", "info", 2.2)
+    Name = "Get Code + Go Barn",
+    Description = "Teleports to Barn and scans for puzzle code",
+    Callback = function()
+        Teleport:ToLocation("Bunker", CodeSearchOrigin, true)
+        Notify("Code", "Searching...", "info", 2.2)
 
-		task.spawn(function()
-			task.wait(0.45)
-			local code = MainGetPuzzleCode()
-			Notify("Code Found", code ~= "" and code or "No code found.", code ~= "" and "success" or "info", 4)
+        task.spawn(function()
+            task.wait(0.45)
+            local code = MainGetPuzzleCode()
+            Notify("Code Found", code ~= "" and code or "No code found.", code ~= "" and "success" or "info", 4)
 
-			if code ~= "" then
-				task.wait(0.2)
-				if MainEnterBarnKeypadCode(code) then
-					Notify("Barn Keypad", "Entered and submitted " .. code .. ".", "success", 3.5)
-				else
-					Notify("Barn Keypad", "Found code, but could not press every keypad button.", "warning", 4)
-				end
-			end
-		end)
-	end
+            if code ~= "" then
+                task.wait(0.2)
+                if MainEnterBarnKeypadCode(code) then
+                    Notify("Barn Keypad", "Entered and submitted " .. code .. ".", "success", 3.5)
+                else
+                    Notify("Barn Keypad", "Found code, but could not press every keypad button.", "warning", 4)
+                end
+            end
+        end)
+    end
 })
 
 MainSection:CreateButton({
-	Name = "Open Teleport Menu",
-	Description = "Items, players, and map locations",
-	Callback = function()
-		-- Build teleport menu inline
-		local menuTab = Window:CreateTab("Teleport Menu", { Icon = "📍" })
-		local menuSection = menuTab:CreateSection("Items")
+    Name = "Open Teleport Menu",
+    Description = "Items, players, and map locations",
+    Callback = function()
+        local menuTab = Window:CreateTab("Teleport Menu")
+        local menuSection = menuTab:CreateSection("Items")
 
-		local itemNamesList, liveNames = buildTeleportMenuItems()
-		for _, itemName in ipairs(itemNamesList) do
-			menuSection:CreateButton({
-				Name = itemName,
-				Callback = function()
-					if itemName == "Meteor Crate" then
-						Items:TeleportToCrate()
-					else
-						Items:TeleportTo(itemName)
-					end
-				end
-			})
-		end
+        for _, itemName in ipairs(itemNames) do
+            menuSection:CreateButton({
+                Name = itemName,
+                Callback = function()
+                    if itemName == "Meteor Crate" then
+                        Items:TeleportToCrate()
+                    else
+                        Items:TeleportTo(itemName)
+                    end
+                end
+            })
+        end
 
-		local playersSection = menuTab:CreateSection("Players")
-		playersSection:CreateButton({
-			Name = "Teleport To Nearest",
-			Callback = function() Combat:TeleportToNearestPlayer() end
-		})
-		playersSection:CreateButton({
-			Name = "Teleport To Lowest Health",
-			Callback = function() Combat:TeleportToLowestHealthPlayer() end
-		})
+        local playersSection = menuTab:CreateSection("Players")
+        playersSection:CreateButton({
+            Name = "Teleport To Nearest",
+            Callback = function() Combat:TeleportToNearestPlayer() end
+        })
+        playersSection:CreateButton({
+            Name = "Teleport To Lowest Health",
+            Callback = function() Combat:TeleportToLowestHealthPlayer() end
+        })
 
-		for _, targetPlayer in ipairs(Players:GetPlayers()) do
-			if targetPlayer ~= player then
-				playersSection:CreateButton({
-					Name = targetPlayer.Name,
-					Callback = function() Combat:TeleportToPlayer(targetPlayer) end
-				})
-			end
-		end
+        for _, targetPlayer in ipairs(Players:GetPlayers()) do
+            if targetPlayer ~= player then
+                playersSection:CreateButton({
+                    Name = targetPlayer.Name,
+                    Callback = function() Combat:TeleportToPlayer(targetPlayer) end
+                })
+            end
+        end
 
-		local locSection = menuTab:CreateSection("Locations")
-		for _, location in ipairs(Teleport.Locations) do
-			locSection:CreateButton({
-				Name = location.Name,
-				Callback = function() Teleport:ToLocation(location.Name, location.Position) end
-			})
-		end
-	end
+        local locSection = menuTab:CreateSection("Locations")
+        for _, location in ipairs(Teleport.Locations) do
+            locSection:CreateButton({
+                Name = location.Name,
+                Callback = function() Teleport:ToLocation(location.Name, location.Position) end
+            })
+        end
+    end
 })
 
-MainSection:CreateToggle({
-	Name = "Early Bus Jump",
-	Description = "Automatically jumps out when you are seated in the bus",
-	Default = false,
-	Callback = function(state)
-		UI.SetAutoEarlyBusJump(state, false)
-	end,
-	Flag = "EarlyBusJump"
+-- ✅ Store the return value, NOT _lastToggle
+local earlyBusJumpRef = MainSection:CreateToggle({
+    Name = "Early Bus Jump",
+    Description = "Automatically jumps out when you are seated in the bus",
+    Default = false,
+    Callback = function(state)
+        UI.SetAutoEarlyBusJump(state, false)
+    end,
+    Flag = "EarlyBusJump"
 })
-UI.ToggleRefs.EarlyBusJump = MainSection._lastToggle
+UI.ToggleRefs.EarlyBusJump = earlyBusJumpRef
 
-MainSection:CreateToggle({
-	Name = "Infinite Jump",
-	Description = "Lets you jump again while airborne",
-	Default = false,
-	Callback = function(state)
-		UI.SetInfiniteJump(state, false)
-	end,
-	Flag = "InfiniteJump"
+local infiniteJumpRef = MainSection:CreateToggle({
+    Name = "Infinite Jump",
+    Description = "Lets you jump again while airborne",
+    Default = false,
+    Callback = function(state)
+        UI.SetInfiniteJump(state, false)
+    end,
+    Flag = "InfiniteJump"
 })
-UI.ToggleRefs.InfiniteJump = MainSection._lastToggle
+UI.ToggleRefs.InfiniteJump = infiniteJumpRef
 
-MainSection:CreateToggle({
-	Name = "Player Stats ESP",
-	Description = "Shows player health, kills, strength, and speed",
-	Default = false,
-	Callback = function(state)
-		UI.SetPlayerStatsESP(state, false)
-	end,
-	Flag = "PlayerESP"
+local playerESPRef = MainSection:CreateToggle({
+    Name = "Player Stats ESP",
+    Description = "Shows player health, kills, strength, and speed",
+    Default = false,
+    Callback = function(state)
+        UI.SetPlayerStatsESP(state, false)
+    end,
+    Flag = "PlayerESP"
 })
-UI.ToggleRefs.PlayerESP = MainSection._lastToggle
+UI.ToggleRefs.PlayerESP = playerESPRef
 
-MainSection:CreateToggle({
-	Name = "Item ESP",
-	Description = "Highlights dropped items with color tags",
-	Default = false,
-	Callback = function(state)
-		UI.SetItemESP(state, false)
-	end,
-	Flag = "ItemESP"
+local itemESPRef = MainSection:CreateToggle({
+    Name = "Item ESP",
+    Description = "Highlights dropped items with color tags",
+    Default = false,
+    Callback = function(state)
+        UI.SetItemESP(state, false)
+    end,
+    Flag = "ItemESP"
 })
-UI.ToggleRefs.ItemESP = MainSection._lastToggle
+UI.ToggleRefs.ItemESP = itemESPRef
 
-MainSection:CreateToggle({
-	Name = "Auto Rejoin",
-	Description = "Rejoins after death or disconnect",
-	Default = false,
-	Callback = function(state)
-		UI.SetAutoRejoin(state, false)
-	end,
-	Flag = "AutoRejoin"
+local autoRejoinRef = MainSection:CreateToggle({
+    Name = "Auto Rejoin",
+    Description = "Rejoins after death or disconnect",
+    Default = false,
+    Callback = function(state)
+        UI.SetAutoRejoin(state, false)
+    end,
+    Flag = "AutoRejoin"
 })
-UI.ToggleRefs.AutoRejoin = MainSection._lastToggle
+UI.ToggleRefs.AutoRejoin = autoRejoinRef
 
-MainSection:CreateToggle({
-	Name = "Recommended Settings",
-	Description = "Slap Aura, ESP, anti-ragdoll, sorting, rejoin, and item menu",
-	Default = false,
-	Callback = function(state)
-		UI.SetRecommendedSettings(state, false)
-	end,
-	Flag = "RecommendedSettings"
+local recommendedRef = MainSection:CreateToggle({
+    Name = "Recommended Settings",
+    Description = "Slap Aura, ESP, anti-ragdoll, sorting, rejoin, and item menu",
+    Default = false,
+    Callback = function(state)
+        UI.SetRecommendedSettings(state, false)
+    end,
+    Flag = "RecommendedSettings"
 })
-UI.ToggleRefs.RecommendedSettings = MainSection._lastToggle
+UI.ToggleRefs.RecommendedSettings = recommendedRef
 
 -- Items Tab
 local ItemsSection = ItemsTab:CreateSection("Item Management")
