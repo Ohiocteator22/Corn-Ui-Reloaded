@@ -38,6 +38,7 @@ local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
 local Library = {}
 Library.__index = Library
+Library.WindowMethods = {}
 Library._customElements = {}
 Library._themeHistory = {}
 Library._windowPositions = {}
