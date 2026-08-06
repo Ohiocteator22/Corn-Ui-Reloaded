@@ -65,13 +65,13 @@ local Window = Corn:CreateWindow({
 	Icon = 80406291512141, 
 })
 
-local MainTab = Window:CreateTab("Main", { Icon = "nil" })
-local ItemsTab = Window:CreateTab("Items", { Icon = "nil" })
-local TeleportsTab = Window:CreateTab("Teleports", { Icon = "nil" })
-local CombatTab = Window:CreateTab("Combat", { Icon = "nil" })
-local BETATab = Window:CreateTab("BETA", { Icon = "nil" })
-local SafetyTab = Window:CreateTab("Safety", { Icon = "nil" })
-local SettingsTab = Window:CreateTab("Settings", { Icon = "nil" })
+local MainTab = Window:CreateTab("Main", { Icon = nil })
+local ItemsTab = Window:CreateTab("Items", { Icon = nil })
+local TeleportsTab = Window:CreateTab("Teleports", { Icon = nil })
+local CombatTab = Window:CreateTab("Combat", { Icon = nil })
+local BETATab = Window:CreateTab("BETA", { Icon = nil })
+local SafetyTab = Window:CreateTab("Safety", { Icon = nil })
+local SettingsTab = Window:CreateTab("Settings", { Icon = nil })
 
 -- ============================================================
 -- NOTIFICATION SYSTEM
