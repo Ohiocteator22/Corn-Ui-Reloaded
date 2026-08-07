@@ -2175,20 +2175,29 @@ function WM:Notify(config)
 	-- ✅ ROOT: minimum height 70, automatic height, cap at 180
 	local notif = create("Frame", {
 	Name = "Notification",
-	Size = UDim2.new(1, 0, 0, 70),
+	Size = UDim2.new(1,0,0,0),
+	AutomaticSize = Enum.AutomaticSize.Y,
 	BackgroundColor3 = Theme.Header,
 	BackgroundTransparency = 1,
 	LayoutOrder = self._notifCount,
 	ZIndex = 150,
-	ClipsDescendants = false,                -- clips content if it exceeds the max height
-	}, {
-		corner(12),
-		stroke(barColor, 1),
-		create("UIPadding", {
-			PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10),
-			PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12),
-		}),
-		create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
+	ClipsDescendants = false,
+}, {
+	corner(12),
+	stroke(barColor,1),
+
+	create("UIPadding", {
+		PaddingTop = UDim.new(0,10),
+		PaddingBottom = UDim.new(0,10),
+		PaddingLeft = UDim.new(0,12),
+		PaddingRight = UDim.new(0,12),
+	}),
+
+	create("UIListLayout", {
+		Padding = UDim.new(0,4),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	}),
+})
 		-- ✅ SCALING FIX: cap max height so it never fills the screen
 		create("UISizeConstraint", {
 			MaxSize = Vector2.new(9999, 180),
