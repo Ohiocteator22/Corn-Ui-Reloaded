@@ -1109,7 +1109,7 @@ function WM:Notify(config)
 	if #Library.NotificationHistory > Library.MAX_NOTIFICATION_HISTORY then
 		table.remove(Library.NotificationHistory, 1)
 	end
-	Library.NotificationLogged:Fire(historyEntry)
+	notificationLoggedEvent:Fire(historyEntry)
 
 	playNotificationSound(notifType)
 
