@@ -46,9 +46,11 @@ local Corn = loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohioctea
 local Window = Corn:CreateWindow({
 	Name = "OP Slap Royale",
 	Subtitle = "v1.9.2 Port",
+	Icon = 80406291512141,
 	Theme = "Ocean",
 })
-
+Corn:SetFlag("ReducedMotion", false)
+Corn:SetFlag("PerformanceMode", false)
 -- Tabs (no icons, just emojis in names)
 local MainTab = Window:CreateTab("⭐ Main")
 local ItemsTab = Window:CreateTab("📦 Items")
