@@ -2187,11 +2187,11 @@ function WM:Notify(config)
 
     playNotificationSound(notifType)
 
-    -- ✅ SIMPLE: Use a fixed height frame with a ScrollingFrame inside
-    local MAX_HEIGHT = 120
+    -- ✅ SIMPLE NOTIFICATION: fixed height, no automatic sizing
+    local HEIGHT = 80  -- Fixed height
     local notif = create("Frame", {
         Name = "Notification",
-        Size = UDim2.new(1, 0, 0, MAX_HEIGHT),  -- Fixed height
+        Size = UDim2.new(1, 0, 0, HEIGHT),
         BackgroundColor3 = Theme.Header,
         BackgroundTransparency = 1,
         LayoutOrder = self._notifCount,
@@ -2250,7 +2250,7 @@ function WM:Notify(config)
         iconLabel.Parent = titleRow
     end
 
-    -- Title
+    -- Title (always visible)
     local titleLabel = create("TextLabel", {
         Text = title,
         Font = Enum.Font.GothamBold,
@@ -2260,39 +2260,26 @@ function WM:Notify(config)
         Size = UDim2.new(1, iconChar and -22 or 0, 1, 0),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextWrapped = true,
-        TextTransparency = 0,
+        TextTransparency = 0,  -- ✅ VISIBLE
     })
     titleLabel.Parent = titleRow
 
-    -- ✅ Content: Scrollable and visible
-    local contentScroll = create("ScrollingFrame", {
-        Size = UDim2.new(1, 0, 0, 0),
-        AutomaticSize = Enum.AutomaticSize.Y,
-        BackgroundTransparency = 1,
-        BorderSizePixel = 0,
-        ScrollBarThickness = 4,
-        CanvasSize = UDim2.new(0, 0, 0, 0),
-        AutomaticCanvasSize = Enum.AutomaticSize.Y,
-        ClipsDescendants = true,
-        LayoutOrder = 2,
-    })
-    contentScroll.Parent = notif
-
+    -- ✅ Content: simple label, NO AutomaticSize, NO ScrollingFrame
     local contentLabel = create("TextLabel", {
         Text = content,
         Font = Enum.Font.Gotham,
         TextSize = touch and 14 or 12,
         TextColor3 = Theme.SubText,
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 0),
-        AutomaticSize = Enum.AutomaticSize.Y,
+        Size = UDim2.new(1, 0, 0, 28),  -- Fixed height for content
         TextXAlignment = Enum.TextXAlignment.Left,
         TextYAlignment = Enum.TextYAlignment.Top,
         TextWrapped = true,
-        TextTransparency = 0,  -- ✅ Visible!
-        RichText = true,
+        TextTransparency = 0,  -- ✅ VISIBLE
+        LayoutOrder = 2,
+        ClipsDescendants = true,
     })
-    contentLabel.Parent = contentScroll
+    contentLabel.Parent = notif
 
     -- Progress bar
     local progressColor = typeColors[notifType] or Color3.fromRGB(140, 140, 148)
