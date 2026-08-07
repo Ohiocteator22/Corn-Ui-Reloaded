@@ -1,21 +1,6 @@
 --[[
-	OP Slap Royale — CornUi v1.9.1b Port
-	
-	Features:
-	- Main tab: Code search, Teleport Menu, Early Bus Jump, Infinite Jump, ESP, Auto Rejoin, Recommended Settings
-	- Items tab: Auto collect, Auto pick up, Auto Heal, Auto Sort, Auto Use Permanent Items, Item usage buttons
-	- Teleports tab: School Bus teleport
-	- Combat tab: Hitbox Size, Expand Hitbox, Visualize Hitboxes, Slap Aura, Auto Slap, Player teleports
-	- BETA tab: Collect Crates, Auto collect crates, Crate Aura, Early Auto Collect
-	- Safety tab: Auto optimize cooldown, Anti-Staff, Hide under map, Anti-Ragdoll
-	- Settings tab: Custom strikes, TP Debounce, F Lock, Disable Notifications, Theme
-	
-	Optimizations:
-	- Removed redundant UI wrappers
-	- Consolidated event listeners
-	- Improved memory management
-	- Reduced redundant function calls
-	- Cached frequently accessed objects
+	OP Slap Royale — CornUi v1.9.2 Port (No References)
+	All elements self-contained, uses Flags for state.
 ]]
 
 -- ============================================================
@@ -57,21 +42,21 @@ local PlayerGui = player:WaitForChild("PlayerGui")
 -- CORNUI SETUP
 -- ============================================================
 
-local Corn = loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/refs/heads/main/Sourse/CornUi.lua"))()
+local Corn = loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/main/CornUi.lua"))()
 local Window = Corn:CreateWindow({
 	Name = "OP Slap Royale",
-	Subtitle = "Made by- SlapSnyte, AstroLord, Allure, Interscription",
+	Subtitle = "v1.9.2 Port",
 	Theme = "Ocean",
-	Icon = 80406291512141, 
 })
 
-local MainTab = Window:CreateTab("Main")
-local ItemsTab = Window:CreateTab("Items")
-local TeleportsTab = Window:CreateTab("Teleports")
-local CombatTab = Window:CreateTab("Combat")
-local BETATab = Window:CreateTab("BETA")
-local SafetyTab = Window:CreateTab("Safety")
-local SettingsTab = Window:CreateTab("Settings")
+-- Tabs (no icons, just emojis in names)
+local MainTab = Window:CreateTab("⭐ Main")
+local ItemsTab = Window:CreateTab("📦 Items")
+local TeleportsTab = Window:CreateTab("📍 Teleports")
+local CombatTab = Window:CreateTab("⚔️ Combat")
+local BETATab = Window:CreateTab("🧪 BETA")
+local SafetyTab = Window:CreateTab("🛡️ Safety")
+local SettingsTab = Window:CreateTab("⚙️ Settings")
 
 -- ============================================================
 -- NOTIFICATION SYSTEM
@@ -1013,12 +998,9 @@ local Items = {
 	TeleportDebounce = 0.5,
 	AutoCollectEnabled = false,
 	AutoCollectThread = nil,
-	AutoCollectToggle = nil,
 	EarlyAutoCollectEnabled = false,
 	EarlyAutoCollectThread = nil,
-	EarlyAutoCollectToggle = nil,
 	AutoPickupEnabled = false,
-	AutoPickupToggle = nil,
 	AutoPickupPart = nil,
 	AutoPickupThread = nil,
 	AutoPickupTouching = {},
@@ -1274,75 +1256,15 @@ function Teleport:GetItemCFrame(itemPart, excludeInstances)
 	return CFrame.new(position + Vector3.new(0, 4, 0))
 end
 
-function Teleport:GetItemCFrame(itemPart, excludeInstances)
-	local position = itemPart.Position
-
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = excludeInstances or {}
-
-	local overlapParams = OverlapParams.new()
-	overlapParams.FilterType = Enum.RaycastFilterType.Exclude
-	overlapParams.FilterDescendantsInstances = excludeInstances or {}
-
-	local function hasRoom(candidatePosition)
-		local touching = workspace:GetPartBoundsInBox(CFrame.new(candidatePosition + Vector3.new(0, 1.8, 0)), Vector3.new(2.8, 4.4, 2.8), overlapParams)
-		for _, part in ipairs(touching) do
-			if part ~= itemPart and part.CanCollide and part.Transparency < 0.95 then
-				return false
-			end
-		end
-		return true
-	end
-
-	local function canSeeItem(candidatePosition)
-		local itemFocus = position + Vector3.new(0, 1, 0)
-		local viewPosition = candidatePosition + Vector3.new(0, 1.6, 0)
-		local direction = itemFocus - viewPosition
-		if direction.Magnitude <= 0.1 then return true end
-		local result = workspace:Raycast(viewPosition, direction, params)
-		return not result or (result.Position - itemFocus).Magnitude <= 1.5
-	end
-
-	local roofResult = workspace:Raycast(position + Vector3.new(0, 0.5, 0), Vector3.new(0, 7, 0), params)
-	local hasRoofAbove = roofResult and roofResult.Instance and roofResult.Instance.CanCollide and roofResult.Instance.Transparency < 0.95
-
-	local searchOffsets = hasRoofAbove and {
-		Vector3.new(0.8, 0, 0), Vector3.new(-0.8, 0, 0),
-		Vector3.new(0, 0, 0.8), Vector3.new(0, 0, -0.8),
-		Vector3.new(1.4, 0, 1.4), Vector3.new(-1.4, 0, 1.4),
-		Vector3.new(1.4, 0, -1.4), Vector3.new(-1.4, 0, -1.4),
-	} or {
-		Vector3.zero,
-		Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0),
-		Vector3.new(0, 0, 1), Vector3.new(0, 0, -1),
-	}
-
-	for _, offset in ipairs(searchOffsets) do
-		local rayOrigin = position + offset + Vector3.new(0, 1.5, 0)
-		local result = workspace:Raycast(rayOrigin, Vector3.new(0, -35, 0), params)
-		if result then
-			local candidatePosition = result.Position + Vector3.new(0, 4, 0)
-			if hasRoom(candidatePosition) and (not hasRoofAbove or canSeeItem(candidatePosition)) then
-				return CFrame.new(candidatePosition)
-			end
-		end
-	end
-
-	return CFrame.new(position + Vector3.new(0, 4, 0))
-end
-
 -- ============================================================
 -- ITEMS — Auto Collect
 -- ============================================================
 
 local autoPermanentEnabled = false
-local autoPermanentToggle = nil
 local autoHealEnabled = false
 local autoHealConnection = nil
 local autoSortEnabled = false
 local autoSortBusy = false
-local autoSortConnections = {}
 local movementSave = nil
 local visitedCollectPositions = {}
 local ignoredCollectTargets = {}
@@ -2541,31 +2463,19 @@ function Items:SetEarlyAutoCollect(state, silent)
 		local timerNumber = getTimerNumber()
 		if not timerNumber then
 			Notify("Early Auto Collect", "No countdown detected.", "warning")
-			task.defer(function()
-				if self.EarlyAutoCollectToggle then
-					self.EarlyAutoCollectToggle.Set(false, false)
-				end
-			end)
+			self.EarlyAutoCollectEnabled = false
 			return
 		end
 
 		if timerNumber <= 3 then
 			Notify("Early Auto Collect", "Must be activated before there are 3 seconds left.", "warning")
-			task.defer(function()
-				if self.EarlyAutoCollectToggle then
-					self.EarlyAutoCollectToggle.Set(false, false)
-				end
-			end)
+			self.EarlyAutoCollectEnabled = false
 			return
 		end
 
 		if self.AutoCollectEnabled then
 			Notify("Early Auto Collect", "Turn Auto collect off first.", "warning")
-			task.defer(function()
-				if self.EarlyAutoCollectToggle then
-					self.EarlyAutoCollectToggle.Set(false, false)
-				end
-			end)
+			self.EarlyAutoCollectEnabled = false
 			return
 		end
 
@@ -2586,9 +2496,6 @@ function Items:SetEarlyAutoCollect(state, silent)
 				task.wait(1)
 				self:SetAutoCollect(true, silent)
 				self.EarlyAutoCollectEnabled = false
-				if self.EarlyAutoCollectToggle then
-					self.EarlyAutoCollectToggle.Set(false, false)
-				end
 				Notify("Early Auto Collect", "Auto collect started.", "success")
 			end
 		end)
@@ -2687,7 +2594,7 @@ local function isLocalPlayerInBus()
 	return false
 end
 
-function UI.SetAutoEarlyBusJump(state, silent)
+function UI_SetAutoEarlyBusJump(state, silent)
 	AutoEarlyBusJumpEnabled = state == true
 
 	if AutoEarlyBusJumpEnabled then
@@ -2734,7 +2641,7 @@ end
 local InfiniteJumpEnabled = false
 local InfiniteJumpConnection = nil
 
-function UI.SetInfiniteJump(state, silent)
+function UI_SetInfiniteJump(state, silent)
 	InfiniteJumpEnabled = state == true
 
 	if InfiniteJumpEnabled then
@@ -2957,7 +2864,7 @@ function ESP:Disable()
 	end
 end
 
-function UI.SetPlayerStatsESP(state, silent)
+function UI_SetPlayerStatsESP(state, silent)
 	if state then
 		ESP:Enable()
 		if not silent then
@@ -3126,7 +3033,7 @@ function ItemESP:Start()
 	end)
 end
 
-function UI.SetItemESP(state, silent)
+function UI_SetItemESP(state, silent)
 	ItemESP.Enabled = state == true
 
 	if ItemESP.Enabled then
@@ -3153,7 +3060,7 @@ local AutoRejoinBusy = false
 local AutoRejoinPlaceId = 9426795465
 local AutoRejoinServerPageLimit = 4
 
-function UI:DisconnectAutoRejoin()
+function UI_DisconnectAutoRejoin()
 	for _, connection in ipairs(AutoRejoinConnections) do
 		if connection then
 			pcall(function() connection:Disconnect() end)
@@ -3162,7 +3069,7 @@ function UI:DisconnectAutoRejoin()
 	table.clear(AutoRejoinConnections)
 end
 
-function UI:FetchAutoRejoinServers(placeId, cursor)
+function UI_FetchAutoRejoinServers(placeId, cursor)
 	local url = "https://games.roblox.com/v1/games/" .. tostring(placeId) .. "/servers/Public?sortOrder=Desc&limit=100"
 	if type(cursor) == "string" and cursor ~= "" then
 		local encodedCursor = cursor
@@ -3208,13 +3115,13 @@ function UI:FetchAutoRejoinServers(placeId, cursor)
 	return nil
 end
 
-function UI:GetHighestPlayerAutoRejoinServer(placeId)
+function UI_GetHighestPlayerAutoRejoinServer(placeId)
 	local bestServerId = nil
 	local bestPlaying = -1
 	local cursor = nil
 
 	for _ = 1, AutoRejoinServerPageLimit do
-		local decoded = self:FetchAutoRejoinServers(placeId, cursor)
+		local decoded = UI_FetchAutoRejoinServers(placeId, cursor)
 		if type(decoded) ~= "table" then break end
 
 		for _, server in ipairs(decoded.data or {}) do
@@ -3234,14 +3141,14 @@ function UI:GetHighestPlayerAutoRejoinServer(placeId)
 	return bestServerId, bestPlaying
 end
 
-function UI:TeleportAutoRejoin(reason)
+function UI_TeleportAutoRejoin(reason)
 	if AutoRejoinBusy then return end
 	AutoRejoinBusy = true
 	Notify("Auto Rejoin", "Finding fullest server after " .. tostring(reason) .. ".", "info")
 
 	task.spawn(function()
 		local placeId = tonumber(AutoRejoinPlaceId) or game.PlaceId
-		local serverId, playing = self:GetHighestPlayerAutoRejoinServer(placeId)
+		local serverId, playing = UI_GetHighestPlayerAutoRejoinServer(placeId)
 		local joinedServer = false
 
 		if serverId then
@@ -3261,36 +3168,36 @@ function UI:TeleportAutoRejoin(reason)
 	end)
 end
 
-function UI:HookAutoRejoinCharacter(character)
+function UI_HookAutoRejoinCharacter(character)
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if not humanoid then return end
 
 	table.insert(AutoRejoinConnections, humanoid.Died:Connect(function()
 		if AutoRejoinEnabled then
-			self:TeleportAutoRejoin("death")
+			UI_TeleportAutoRejoin("death")
 		end
 	end))
 end
 
-function UI.SetAutoRejoin(state, silent)
+function UI_SetAutoRejoin(state, silent)
 	AutoRejoinEnabled = state == true
-	self:DisconnectAutoRejoin()
+	UI_DisconnectAutoRejoin()
 
 	if AutoRejoinEnabled then
 		AutoRejoinBusy = false
-		self:HookAutoRejoinCharacter(getCharacter())
+		UI_HookAutoRejoinCharacter(getCharacter())
 
 		table.insert(AutoRejoinConnections, player.CharacterAdded:Connect(function(character)
 			task.wait(0.3)
 			if AutoRejoinEnabled then
-				self:HookAutoRejoinCharacter(character)
+				UI_HookAutoRejoinCharacter(character)
 			end
 		end))
 
 		pcall(function()
 			table.insert(AutoRejoinConnections, GuiService.ErrorMessageChanged:Connect(function()
 				if AutoRejoinEnabled then
-					self:TeleportAutoRejoin("disconnect")
+					UI_TeleportAutoRejoin("disconnect")
 				end
 			end))
 		end)
@@ -3307,34 +3214,25 @@ function UI.SetAutoRejoin(state, silent)
 end
 
 -- ============================================================
--- RECOMMENDED SETTINGS
+-- RECOMMENDED SETTINGS (Uses Flags)
 -- ============================================================
 
-function UI.SetRecommendedSettings(state, silent)
+function UI_SetRecommendedSettings(state, silent)
 	local enabled = state == true
 
-	local function setToggle(key, value)
-		local ref = UI.ToggleRefs[key]
-		if ref and ref.Set then
-			ref.Set(value, false)
-		end
-	end
-
-	setToggle("SlapAura", enabled)
-	setToggle("AutoHeal", enabled)
-	setToggle("AntiRagdoll", enabled)
-	setToggle("AutoSort", enabled)
-	setToggle("PlayerESP", enabled)
-	setToggle("ItemESP", enabled)
-	setToggle("AutoRejoin", enabled)
+	-- Set flags directly — no references needed
+	Corn:SetFlag("SlapAura", enabled)
+	Corn:SetFlag("AutoHeal", enabled)
+	Corn:SetFlag("AntiRagdoll", enabled)
+	Corn:SetFlag("AutoSort", enabled)
+	Corn:SetFlag("PlayerESP", enabled)
+	Corn:SetFlag("ItemESP", enabled)
+	Corn:SetFlag("AutoRejoin", enabled)
+	Corn:SetFlag("EarlyBusJump", enabled)
 
 	if enabled then
-		setToggle("EarlyBusJump", true)
-		UI.SetAutoEarlyBusJump(true, true)
 		Notify("Recommended Settings", "Applied recommended settings.", "success")
 	else
-		setToggle("EarlyBusJump", false)
-		UI.SetAutoEarlyBusJump(false, true)
 		Notify("Recommended Settings", "Disabled recommended settings.", "info")
 	end
 end
@@ -3761,6 +3659,9 @@ function Combat:SpawnAntiSlapBox()
 	local innerHeight = 8
 	local innerDepth = 8
 	local thickness = 40
+	local outerWidth = innerWidth + thickness * 2
+	local outerHeight = innerHeight + thickness * 2
+	local outerDepth = innerDepth + thickness * 2
 
 	local function createPart(cframe, size)
 		local part = Instance.new("Part")
@@ -4211,284 +4112,236 @@ function AntiStaff:RunAutoOptimizeCooldownSettings(silent)
 end
 
 -- ============================================================
--- TELEPORT MENU (CornUi Native)
+-- CORNUI UI ELEMENTS (No References, All Self-Contained)
 -- ============================================================
 
-local TeleportMenu = {
-	ActiveTab = "Items",
-	Rows = {},
-}
-
-local function buildTeleportMenuItems()
-	local items = {}
-	local seen = {}
-	local liveNames = {}
-
-	for _, itemName in ipairs(itemNames) do
-		if not seen[normalizeName(itemName)] then
-			seen[normalizeName(itemName)] = true
-			table.insert(items, itemName)
-		end
-	end
-
-	Items:RefreshCrates()
-	if #Items.Crates > 0 then
-		liveNames[normalizeName("Meteor Crate")] = true
-	end
-
-	return items, liveNames
-end
-
-local function createTeleportMenu()
-	-- This will be built using CornUi's native UI elements
-	-- Since CornUi doesn't have a built-in side menu, we'll use a card with buttons
-end
-
--- ============================================================
--- CORNUI UI ELEMENTS (FIXED)
--- ============================================================
-
-UI.ToggleRefs = {}
-
--- Create Main Tab elements
+-- Main Tab
 local MainSection = MainTab:CreateSection("Core Features")
 
 MainSection:CreateButton({
-    Name = "Get Code + Go Barn",
-    Description = "Teleports to Barn and scans for puzzle code",
-    Callback = function()
-        Teleport:ToLocation("Bunker", CodeSearchOrigin, true)
-        Notify("Code", "Searching...", "info", 2.2)
+	Name = "Get Code + Go Barn",
+	Description = "Teleports to Barn and scans for puzzle code",
+	Callback = function()
+		Teleport:ToLocation("Bunker", CodeSearchOrigin, true)
+		Notify("Code", "Searching...", "info", 2.2)
 
-        task.spawn(function()
-            task.wait(0.45)
-            local code = MainGetPuzzleCode()
-            Notify("Code Found", code ~= "" and code or "No code found.", code ~= "" and "success" or "info", 4)
+		task.spawn(function()
+			task.wait(0.45)
+			local code = MainGetPuzzleCode()
+			Notify("Code Found", code ~= "" and code or "No code found.", code ~= "" and "success" or "info", 4)
 
-            if code ~= "" then
-                task.wait(0.2)
-                if MainEnterBarnKeypadCode(code) then
-                    Notify("Barn Keypad", "Entered and submitted " .. code .. ".", "success", 3.5)
-                else
-                    Notify("Barn Keypad", "Found code, but could not press every keypad button.", "warning", 4)
-                end
-            end
-        end)
-    end
+			if code ~= "" then
+				task.wait(0.2)
+				if MainEnterBarnKeypadCode(code) then
+					Notify("Barn Keypad", "Entered and submitted " .. code .. ".", "success", 3.5)
+				else
+					Notify("Barn Keypad", "Found code, but could not press every keypad button.", "warning", 4)
+				end
+			end
+		end)
+	end
 })
 
 MainSection:CreateButton({
-    Name = "Open Teleport Menu",
-    Description = "Items, players, and map locations",
-    Callback = function()
-        local menuTab = Window:CreateTab("Teleport Menu")
-        local menuSection = menuTab:CreateSection("Items")
+	Name = "Open Teleport Menu",
+	Description = "Items, players, and map locations",
+	Callback = function()
+		-- Build teleport menu inline
+		local menuTab = Window:CreateTab("📍 Teleport Menu")
+		local menuSection = menuTab:CreateSection("Items")
 
-        for _, itemName in ipairs(itemNames) do
-            menuSection:CreateButton({
-                Name = itemName,
-                Callback = function()
-                    if itemName == "Meteor Crate" then
-                        Items:TeleportToCrate()
-                    else
-                        Items:TeleportTo(itemName)
-                    end
-                end
-            })
-        end
+		local itemNamesList = itemNames
+		for _, itemName in ipairs(itemNamesList) do
+			menuSection:CreateButton({
+				Name = itemName,
+				Callback = function()
+					Items:TeleportTo(itemName)
+				end
+			})
+		end
 
-        local playersSection = menuTab:CreateSection("Players")
-        playersSection:CreateButton({
-            Name = "Teleport To Nearest",
-            Callback = function() Combat:TeleportToNearestPlayer() end
-        })
-        playersSection:CreateButton({
-            Name = "Teleport To Lowest Health",
-            Callback = function() Combat:TeleportToLowestHealthPlayer() end
-        })
+		local playersSection = menuTab:CreateSection("Players")
+		playersSection:CreateButton({
+			Name = "Teleport To Nearest",
+			Callback = function() Combat:TeleportToNearestPlayer() end
+		})
+		playersSection:CreateButton({
+			Name = "Teleport To Lowest Health",
+			Callback = function() Combat:TeleportToLowestHealthPlayer() end
+		})
 
-        for _, targetPlayer in ipairs(Players:GetPlayers()) do
-            if targetPlayer ~= player then
-                playersSection:CreateButton({
-                    Name = targetPlayer.Name,
-                    Callback = function() Combat:TeleportToPlayer(targetPlayer) end
-                })
-            end
-        end
+		for _, targetPlayer in ipairs(Players:GetPlayers()) do
+			if targetPlayer ~= player then
+				playersSection:CreateButton({
+					Name = targetPlayer.Name,
+					Callback = function() Combat:TeleportToPlayer(targetPlayer) end
+				})
+			end
+		end
 
-        local locSection = menuTab:CreateSection("Locations")
-        for _, location in ipairs(Teleport.Locations) do
-            locSection:CreateButton({
-                Name = location.Name,
-                Callback = function() Teleport:ToLocation(location.Name, location.Position) end
-            })
-        end
-    end
+		local locSection = menuTab:CreateSection("Locations")
+		for _, location in ipairs(Teleport.Locations) do
+			locSection:CreateButton({
+				Name = location.Name,
+				Callback = function() Teleport:ToLocation(location.Name, location.Position) end
+			})
+		end
+	end
 })
 
--- ✅ Store the return value, NOT _lastToggle
-local earlyBusJumpRef = MainSection:CreateToggle({
-    Name = "Early Bus Jump",
-    Description = "Automatically jumps out when you are seated in the bus",
-    Default = false,
-    Callback = function(state)
-        UI.SetAutoEarlyBusJump(state, false)
-    end,
-    Flag = "EarlyBusJump"
+MainSection:CreateToggle({
+	Name = "⭐ Early Bus Jump",
+	Description = "Automatically jumps out when you are seated in the bus",
+	Default = false,
+	Flag = "EarlyBusJump",
+	Callback = function(state)
+		UI_SetAutoEarlyBusJump(state, false)
+	end
 })
-UI.ToggleRefs.EarlyBusJump = earlyBusJumpRef
 
-local infiniteJumpRef = MainSection:CreateToggle({
-    Name = "Infinite Jump",
-    Description = "Lets you jump again while airborne",
-    Default = false,
-    Callback = function(state)
-        UI.SetInfiniteJump(state, false)
-    end,
-    Flag = "InfiniteJump"
+MainSection:CreateToggle({
+	Name = "🦘 Infinite Jump",
+	Description = "Lets you jump again while airborne",
+	Default = false,
+	Flag = "InfiniteJump",
+	Callback = function(state)
+		UI_SetInfiniteJump(state, false)
+	end
 })
-UI.ToggleRefs.InfiniteJump = infiniteJumpRef
 
-local playerESPRef = MainSection:CreateToggle({
-    Name = "Player Stats ESP",
-    Description = "Shows player health, kills, strength, and speed",
-    Default = false,
-    Callback = function(state)
-        UI.SetPlayerStatsESP(state, false)
-    end,
-    Flag = "PlayerESP"
+MainSection:CreateToggle({
+	Name = "👤 Player Stats ESP",
+	Description = "Shows player health, kills, strength, and speed",
+	Default = false,
+	Flag = "PlayerESP",
+	Callback = function(state)
+		UI_SetPlayerStatsESP(state, false)
+	end
 })
-UI.ToggleRefs.PlayerESP = playerESPRef
 
-local itemESPRef = MainSection:CreateToggle({
-    Name = "Item ESP",
-    Description = "Highlights dropped items with color tags",
-    Default = false,
-    Callback = function(state)
-        UI.SetItemESP(state, false)
-    end,
-    Flag = "ItemESP"
+MainSection:CreateToggle({
+	Name = "📦 Item ESP",
+	Description = "Highlights dropped items with color tags",
+	Default = false,
+	Flag = "ItemESP",
+	Callback = function(state)
+		UI_SetItemESP(state, false)
+	end
 })
-UI.ToggleRefs.ItemESP = itemESPRef
 
-local autoRejoinRef = MainSection:CreateToggle({
-    Name = "Auto Rejoin",
-    Description = "Rejoins after death or disconnect",
-    Default = false,
-    Callback = function(state)
-        UI.SetAutoRejoin(state, false)
-    end,
-    Flag = "AutoRejoin"
+MainSection:CreateToggle({
+	Name = "🔄 Auto Rejoin",
+	Description = "Rejoins after death or disconnect",
+	Default = false,
+	Flag = "AutoRejoin",
+	Callback = function(state)
+		UI_SetAutoRejoin(state, false)
+	end
 })
-UI.ToggleRefs.AutoRejoin = autoRejoinRef
 
-local recommendedRef = MainSection:CreateToggle({
-    Name = "Recommended Settings",
-    Description = "Slap Aura, ESP, anti-ragdoll, sorting, rejoin, and item menu",
-    Default = false,
-    Callback = function(state)
-        UI.SetRecommendedSettings(state, false)
-    end,
-    Flag = "RecommendedSettings"
+MainSection:CreateToggle({
+	Name = "⚡ Recommended Settings",
+	Description = "Slap Aura, ESP, anti-ragdoll, sorting, rejoin",
+	Default = false,
+	Flag = "RecommendedSettings",
+	Callback = function(state)
+		UI_SetRecommendedSettings(state, false)
+	end
 })
-UI.ToggleRefs.RecommendedSettings = recommendedRef
 
 -- Items Tab
 local ItemsSection = ItemsTab:CreateSection("Item Management")
 
-local autoCollectRef = ItemsSection:CreateToggle({
-	Name = "Auto collect",
+ItemsSection:CreateToggle({
+	Name = "🤖 Auto collect",
 	Description = "Collects priority items without waiting for the round countdown",
 	Default = false,
+	Flag = "AutoCollect",
 	Callback = function(state)
 		Items:SetAutoCollect(state, false)
-	end,
-	Flag = "AutoCollect"
+	end
 })
-Items.AutoCollectToggle = autoCollectRef
 
-local autoPickupRef = ItemsSection:CreateToggle({
-	Name = "Auto pick up",
+ItemsSection:CreateToggle({
+	Name = "📥 Auto pick up",
 	Description = "Creates an invisible pickup zone around you",
 	Default = false,
+	Flag = "AutoPickup",
 	Callback = function(state)
 		Items:SetAutoPickup(state, false)
-	end,
-	Flag = "AutoPickup"
+	end
 })
-Items.AutoPickupToggle = autoPickupRef
 
 ItemsSection:CreateToggle({
-	Name = "Auto Heal",
+	Name = "💚 Auto Heal",
 	Description = "Uses healing items when HP drops",
 	Default = false,
+	Flag = "AutoHeal",
 	Callback = function(state)
 		Items:SetAutoHeal(state, false)
-	end,
-	Flag = "AutoHeal"
+	end
 })
 
 ItemsSection:CreateToggle({
-	Name = "Auto Sort",
+	Name = "📂 Auto Sort",
 	Description = "Glove in slot 1, priority items next",
 	Default = false,
+	Flag = "AutoSort",
 	Callback = function(state)
 		Items:SetAutoSort(state, false)
-	end,
-	Flag = "AutoSort"
+	end
 })
 
-local permanentRef = ItemsSection:CreateToggle({
-	Name = "Auto Use Permanent Items",
+ItemsSection:CreateToggle({
+	Name = "♾️ Auto Use Permanent Items",
 	Description = "Uses permanent boosts on pickup",
 	Default = false,
+	Flag = "AutoPermanentItems",
 	Callback = function(state)
 		setAutoPermanentItems(state, false)
-	end,
-	Flag = "AutoPermanentItems"
+	end
 })
-autoPermanentToggle = permanentRef
 
 ItemsSection:CreateDivider()
 
 ItemsSection:CreateButton({
-	Name = "Use Spheres",
+	Name = "🔵 Use Spheres",
 	Description = "Uses all Sphere of Fury tools in your inventory",
 	Callback = function() Items:UseSpheres() end
 })
 
 ItemsSection:CreateButton({
-	Name = "Use Cubes",
+	Name = "🧊 Use Cubes",
 	Description = "Uses all Cube of Ice tools in your inventory",
 	Callback = function() Items:UseCubes() end
 })
 
 ItemsSection:CreateButton({
-	Name = "Use All Items",
+	Name = "📦 Use All Items",
 	Description = "Uses every held game item quickly",
 	Callback = function() Items:UseAllItems() end
 })
 
 ItemsSection:CreateButton({
-	Name = "Drop All Items",
+	Name = "🗑️ Drop All Items",
 	Description = "Drops every held game item quickly",
 	Callback = function() Items:DropAllItems() end
 })
 
 ItemsSection:CreateButton({
-	Name = "Drop Permanent Items",
+	Name = "💎 Drop Permanent Items",
 	Description = "Drops all permanent boost items quickly",
 	Callback = function() Items:DropAllPermanents() end
 })
 
 ItemsSection:CreateButton({
-	Name = "Drop Temp Items",
+	Name = "⏳ Drop Temp Items",
 	Description = "Drops non-permanent held items quickly",
 	Callback = function() Items:DropTempItems() end
 })
 
 ItemsSection:CreateButton({
-	Name = "Meteor Crate",
+	Name = "📦 Meteor Crate",
 	Description = "Teleports to nearest meteor crate",
 	Callback = function() Items:TeleportToCrate() end
 })
@@ -4497,7 +4350,7 @@ ItemsSection:CreateButton({
 local TeleportsSection = TeleportsTab:CreateSection("Teleport Locations")
 
 TeleportsSection:CreateButton({
-	Name = "Teleport On School Bus",
+	Name = "🚌 Teleport On School Bus",
 	Description = "Teleports you on top of the school bus",
 	Callback = function() Teleport:ToSchoolBusTop() end
 })
@@ -4513,70 +4366,66 @@ end
 local CombatSection = CombatTab:CreateSection("Combat Settings")
 
 CombatSection:CreateSlider({
-	Name = "Hitbox Size",
+	Name = "📏 Hitbox Size",
 	Min = Combat.HitboxMinSize,
 	Max = Combat.HitboxMaxSize,
 	Default = Combat.HitboxSize,
+	Flag = "HitboxSize",
 	Callback = function(value)
 		Combat:SetHitboxSize(value)
-	end,
-	Flag = "HitboxSize"
+	end
 })
 
 CombatSection:CreateToggle({
-	Name = "Expand Hitbox",
+	Name = "🔲 Expand Hitbox",
 	Description = "Applies expanded hitbox to players",
 	Default = false,
+	Flag = "ExpandHitbox",
 	Callback = function(state)
 		Combat:SetHitboxExpanded(state)
-	end,
-	Flag = "ExpandHitbox"
+	end
 })
-UI.ToggleRefs.ExpandHitbox = CombatSection._lastToggle
 
 CombatSection:CreateToggle({
-	Name = "Visualize Hitboxes",
+	Name = "👁️ Visualize Hitboxes",
 	Description = "Shows neon hitbox preview",
 	Default = Combat.HitboxVisible,
+	Flag = "VisualizeHitboxes",
 	Callback = function(state)
 		Combat:SetHitboxVisible(state)
-	end,
-	Flag = "VisualizeHitboxes"
+	end
 })
-UI.ToggleRefs.VisualizeHitboxes = CombatSection._lastToggle
 
 CombatSection:CreateToggle({
-	Name = "Slap Aura",
+	Name = "🌀 Slap Aura",
 	Description = "Slaps valid nearby match players",
 	Default = false,
+	Flag = "SlapAura",
 	Callback = function(state)
 		Combat:SetSlapAura(state, false)
-	end,
-	Flag = "SlapAura"
+	end
 })
-UI.ToggleRefs.SlapAura = CombatSection._lastToggle
 
 CombatSection:CreateToggle({
-	Name = "Auto Slap",
+	Name = "👊 Auto Slap",
 	Description = "Taps when enemy enters hitbox",
 	Default = false,
+	Flag = "AutoSlap",
 	Callback = function(state)
 		Combat:SetAutoGloveTap(state, false)
-	end,
-	Flag = "AutoSlap"
+	end
 })
-UI.ToggleRefs.AutoSlap = CombatSection._lastToggle
 
 CombatSection:CreateDivider()
 
 CombatSection:CreateButton({
-	Name = "Teleport To Lowest Health",
+	Name = "❤️ Teleport To Lowest Health",
 	Description = "Teleports you behind the player with the lowest HP",
 	Callback = function() Combat:TeleportToLowestHealthPlayer() end
 })
 
 CombatSection:CreateButton({
-	Name = "Teleport To Nearest",
+	Name = "📍 Teleport To Nearest",
 	Description = "Teleports you behind the closest player",
 	Callback = function() Combat:TeleportToNearestPlayer() end
 })
@@ -4585,49 +4434,46 @@ CombatSection:CreateButton({
 local BETASection = BETATab:CreateSection("Experimental Features")
 
 BETASection:CreateButton({
-	Name = "Collect Crates",
+	Name = "📦 Collect Crates",
 	Description = "Teleports under each crate and collects them in order",
 	Callback = function() Items:CollectCrates() end
 })
 
 BETASection:CreateToggle({
-	Name = "Auto collect crates",
+	Name = "⚡ Auto collect crates",
 	Description = "Rapidly slaps tracked meteor crates",
 	Default = false,
+	Flag = "FastCollectCrates",
 	Callback = function(state)
 		Items:SetFastCollectCrates(state, false)
-	end,
-	Flag = "FastCollectCrates"
+	end
 })
-UI.ToggleRefs.FastCollectCrates = BETASection._lastToggle
 
 BETASection:CreateToggle({
-	Name = "Crate Aura",
+	Name = "🌀 Crate Aura",
 	Description = "Slaps nearby meteor crates without teleporting",
 	Default = false,
+	Flag = "CrateAura",
 	Callback = function(state)
 		Items:SetCrateAura(state, false)
-	end,
-	Flag = "CrateAura"
+	end
 })
-UI.ToggleRefs.CrateAura = BETASection._lastToggle
 
-local earlyCollectRef = BETASection:CreateToggle({
-	Name = "Early Auto Collect",
+BETASection:CreateToggle({
+	Name = "⏰ Early Auto Collect",
 	Description = "Starts collecting items before round begins",
 	Default = false,
+	Flag = "EarlyAutoCollect",
 	Callback = function(state)
 		Items:SetEarlyAutoCollect(state, false)
-	end,
-	Flag = "EarlyAutoCollect"
+	end
 })
-Items.EarlyAutoCollectToggle = earlyCollectRef
 
 -- Safety Tab
 local SafetySection = SafetyTab:CreateSection("Safety Features")
 
 SafetySection:CreateButton({
-	Name = "Auto optimize cooldown settings",
+	Name = "⚡ Auto optimize cooldown settings",
 	Description = "Checks ping and updates cooldown settings",
 	Callback = function()
 		AntiStaff:RunAutoOptimizeCooldownSettings(false)
@@ -4635,55 +4481,52 @@ SafetySection:CreateButton({
 })
 
 SafetySection:CreateToggle({
-	Name = "Anti-Staff",
+	Name = "🛡️ Anti-Staff",
 	Description = "Leaves when recording keywords detected",
 	Default = false,
+	Flag = "AntiStaff",
 	Callback = function(state)
 		AntiStaff:SetEnabled(state, false)
-	end,
-	Flag = "AntiStaff"
+	end
 })
-UI.ToggleRefs.AntiStaff = SafetySection._lastToggle
 
 SafetySection:CreateToggle({
-	Name = "Hide under map",
+	Name = "⬇️ Hide under map",
 	Description = "Hides your character below the map",
 	Default = false,
+	Flag = "HideUnderMap",
 	Callback = function(state)
 		AntiStaff:SetHideUnderMap(state, false)
-	end,
-	Flag = "HideUnderMap"
+	end
 })
-UI.ToggleRefs.HideUnderMap = SafetySection._lastToggle
 
 SafetySection:CreateToggle({
-	Name = "Anti-Ragdoll / Anti-Slap",
+	Name = "🛡️ Anti-Ragdoll / Anti-Slap",
 	Description = "Invisible cage on knockback",
 	Default = false,
+	Flag = "AntiRagdoll",
 	Callback = function(state)
 		Combat:SetAntiSlap(state, false)
-	end,
-	Flag = "AntiRagdoll"
+	end
 })
-UI.ToggleRefs.AntiRagdoll = SafetySection._lastToggle
 
 -- Settings Tab
 local SettingsSection = SettingsTab:CreateSection("Preferences")
 
 SettingsSection:CreateToggle({
-	Name = "Disable Notifications",
+	Name = "🔕 Disable Notifications",
 	Description = "Turns off all notifications",
 	Default = false,
+	Flag = "DisableNotifications",
 	Callback = function(state)
 		NotificationsDisabled = state == true
-	end,
-	Flag = "DisableNotifications"
+	end
 })
 
 SettingsSection:CreateDivider()
 
 SettingsSection:CreateButton({
-	Name = "Reset to default settings",
+	Name = "🔄 Reset to default settings",
 	Description = "Resets custom strikes, teleport debounce, and F lock",
 	Callback = function()
 		Teleport.MaxStrikes = Teleport.DefaultMaxStrikes
@@ -4694,15 +4537,14 @@ SettingsSection:CreateButton({
 	end
 })
 
-SettingsSection:CreateLabel("Custom Strikes: " .. Teleport.DefaultMaxStrikes)
-SettingsSection:CreateLabel("Custom TP Debounce: " .. Teleport.DefaultDebounce)
-SettingsSection:CreateLabel("Custom F Lock: " .. Teleport.DefaultPostFLock)
+SettingsSection:CreateLabel("⚙️ Custom Strikes: " .. Teleport.DefaultMaxStrikes)
+SettingsSection:CreateLabel("⚙️ Custom TP Debounce: " .. Teleport.DefaultDebounce)
+SettingsSection:CreateLabel("⚙️ Custom F Lock: " .. Teleport.DefaultPostFLock)
 
 -- ============================================================
 -- STARTUP
 -- ============================================================
 
--- Ensure crates are tracked
 task.defer(function()
 	Items:StartCrateWatcher()
 end)
@@ -4718,10 +4560,10 @@ if getgenv and getgenv() then
 		Combat:SetSlapAura(false, true)
 		Combat:SetHitboxExpanded(false)
 		Combat:SetAntiSlap(false, true)
-		UI.SetPlayerStatsESP(false, true)
-		UI.SetItemESP(false, true)
-		UI.SetAutoRejoin(false, true)
-		UI.SetInfiniteJump(false, true)
+		UI_SetPlayerStatsESP(false, true)
+		UI_SetItemESP(false, true)
+		UI_SetAutoRejoin(false, true)
+		UI_SetInfiniteJump(false, true)
 		AntiStaff:SetEnabled(false, true)
 		AntiStaff:SetHideUnderMap(false, true)
 		Teleport:ClearBusTopRidePlatform()
@@ -4732,4 +4574,4 @@ if getgenv and getgenv() then
 	end
 end
 
-Notify("OP Slap Royale", "Loaded successfully! v1.9.1b Port", "success", 5)
+Notify("OP Slap Royale", "Loaded successfully! CornUi v1.9.2 Port", "success", 5)
