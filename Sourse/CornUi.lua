@@ -2187,8 +2187,8 @@ function WM:Notify(config)
 
     playNotificationSound(notifType)
 
-    -- ✅ FIXED: Use UISizeConstraint to limit height
-    local MAX_NOTIFICATION_HEIGHT = 160
+    -- ✅ FIXED: Correctly using Vector2 on UISizeConstraint
+    local MAX_HEIGHT = 160
     local notif = create("Frame", {
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
@@ -2204,9 +2204,9 @@ function WM:Notify(config)
             PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12),
         }),
         create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
-        -- ✅ Add UISizeConstraint to cap height
+        -- ✅ UISizeConstraint with Vector2, not UDim2
         create("UISizeConstraint", {
-            MaxSize = UDim2.new(1, 0, 0, MAX_NOTIFICATION_HEIGHT),
+            MaxSize = Vector2.new(9999, MAX_HEIGHT),  -- Width unlimited, height capped
         }),
     })
     notif.Parent = self._notifHolder
@@ -2261,7 +2261,7 @@ function WM:Notify(config)
     })
     titleLabel.Parent = titleRow
 
-    -- Content with height constraint
+    -- ✅ Content container with clipping
     local contentContainer = create("Frame", {
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
