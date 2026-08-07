@@ -2296,10 +2296,14 @@ function WM:Notify(config)
 	ZIndex = 140,
 		})
     clickArea.Parent = notif
+	clickArea.Visible = true
+	clickArea.Active = true
+	clickArea.Selectable = false
+	
 	local layout = notif:FindFirstChildOfClass("UIListLayout")
-			if layout then
-				clickArea.LayoutOrder = math.huge
-			end
+	if layout then
+		clickArea.LayoutOrder = 999999
+	end
     clickArea.MouseButton1Click:Connect(function()
         if notif then
             notif:Destroy()
