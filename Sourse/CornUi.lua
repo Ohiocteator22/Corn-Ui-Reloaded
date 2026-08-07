@@ -2194,13 +2194,7 @@ function WM:Notify(config)
 			MaxSize = Vector2.new(9999, 180),
 		}),
 	})
-	notif.Parent = self._notifHolder
-
-	-- Click to dismiss
-	
-	clickArea.MouseButton1Click:Connect(function()
-		notif:Destroy()
-	end)
+	notif.Parent = self._notifHolder 
 
 	-- Title row
 	local titleRow = create("Frame", {
@@ -2304,11 +2298,19 @@ function WM:Notify(config)
 	progressBar.ZIndex = 153
 
 	local clickArea = create("TextButton", {
-		Text = "",
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 1, 0),
-		ZIndex = 140,
-	})
+	Text = "",
+	BackgroundTransparency = 1,
+	Size = UDim2.new(1, 0, 1, 0),
+	ZIndex = 140,
+})
+
+clickArea.Parent = notif
+
+clickArea.MouseButton1Click:Connect(function()
+	if notif then
+		notif:Destroy()
+	end
+end)
 	clickArea.Parent = notif
 
 	-- ✅ Fade in the notification (background + text)
