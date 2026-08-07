@@ -2197,7 +2197,6 @@ function WM:Notify(config)
 		Padding = UDim.new(0,4),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 	}),
-})
 		-- ✅ SCALING FIX: cap max height so it never fills the screen
 		create("UISizeConstraint", {
 			MaxSize = Vector2.new(9999, 180),
