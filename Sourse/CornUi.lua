@@ -2187,7 +2187,8 @@ function WM:Notify(config)
 
     playNotificationSound(notifType)
 
-    -- ✅ FIXED: Proper notification with clipping
+    -- ✅ FIXED: Use UISizeConstraint to limit height
+    local MAX_NOTIFICATION_HEIGHT = 160
     local notif = create("Frame", {
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
@@ -2203,6 +2204,10 @@ function WM:Notify(config)
             PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12),
         }),
         create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
+        -- ✅ Add UISizeConstraint to cap height
+        create("UISizeConstraint", {
+            MaxSize = UDim2.new(1, 0, 0, MAX_NOTIFICATION_HEIGHT),
+        }),
     })
     notif.Parent = self._notifHolder
 
@@ -2256,7 +2261,7 @@ function WM:Notify(config)
     })
     titleLabel.Parent = titleRow
 
-    -- ✅ FIXED: Content container with clipping
+    -- Content with height constraint
     local contentContainer = create("Frame", {
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
@@ -2317,7 +2322,6 @@ function WM:Notify(config)
         end
     end)
 end
-
 -- ============================================================
 -- WINDOW: SET THEME
 -- ============================================================
