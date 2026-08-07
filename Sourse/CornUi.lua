@@ -1573,6 +1573,7 @@ function Library:CreateWindow(config)
         Position = UDim2.new(1, -16, 1, -10),
         AnchorPoint = Vector2.new(1, 1),
         BackgroundTransparency = 1,
+		ZIndex = 150,
     }, {
         create("UIListLayout", {
             Padding = UDim.new(0, 8),
@@ -2171,16 +2172,16 @@ function WM:Notify(config)
 
 	self._notifCount += 1
 
-	-- ✅ FIXED HEIGHT: no AutomaticSize, no UISizeConstraint
-	local NOTIFICATION_HEIGHT = 120  -- fixed height in pixels
+	-- ✅ ROOT: minimum height 70, automatic height, cap at 180
 	local notif = create("Frame", {
 		Name = "Notification",
-		Size = UDim2.new(1, 0, 0, NOTIFICATION_HEIGHT),  -- fixed!
+		Size = UDim2.new(1, 0, 0, 70),              -- ⬅️ FIX: start with a non‑zero height
+		AutomaticSize = Enum.AutomaticSize.Y,       -- grows if needed
 		BackgroundColor3 = Theme.Header,
 		BackgroundTransparency = 1,
 		LayoutOrder = self._notifCount,
 		ZIndex = 150,
-		ClipsDescendants = true,
+		ClipsDescendants = true,                    -- clips content if it exceeds the max height
 	}, {
 		corner(12),
 		stroke(barColor, 1),
@@ -2189,6 +2190,10 @@ function WM:Notify(config)
 			PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12),
 		}),
 		create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
+		-- ✅ SCALING FIX: cap max height so it never fills the screen
+		create("UISizeConstraint", {
+			MaxSize = Vector2.new(9999, 180),
+		}),
 	})
 	notif.Parent = self._notifHolder
 
@@ -2204,7 +2209,7 @@ function WM:Notify(config)
 		notif:Destroy()
 	end)
 
-	-- Title row (fixed 22px)
+	-- Title row
 	local titleRow = create("Frame", {
 		Size = UDim2.new(1, 0, 0, 22),
 		BackgroundTransparency = 1,
@@ -2227,9 +2232,10 @@ function WM:Notify(config)
 			TextColor3 = barColor,
 			BackgroundTransparency = 1,
 			Size = UDim2.new(0, 16, 1, 0),
-			TextTransparency = 0,
+			TextTransparency = 1,
 		})
 		iconLabel.Parent = titleRow
+		tween(iconLabel, { TextTransparency = 0 }, 0.2)
 	end
 
 	local titleLabel = create("TextLabel", {
@@ -2241,24 +2247,11 @@ function WM:Notify(config)
 		Size = UDim2.new(1, iconChar and -22 or 0, 1, 0),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextWrapped = true,
-		TextTransparency = 0,
+		TextTransparency = 1,
 	})
 	titleLabel.Parent = titleRow
 
-	-- ✅ Content: Use a ScrollingFrame so long text can be scrolled
-	local contentScroll = create("ScrollingFrame", {
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		ScrollBarThickness = 4,
-		CanvasSize = UDim2.new(0, 0, 0, 0),
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		ClipsDescendants = true,
-		LayoutOrder = 2,
-	})
-	contentScroll.Parent = notif
-
+	-- Content (automatic height, fits inside the parent)
 	local contentLabel = create("TextLabel", {
 		Text = content,
 		Font = Enum.Font.Gotham,
@@ -2270,16 +2263,17 @@ function WM:Notify(config)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Top,
 		TextWrapped = true,
-		TextTransparency = 0,
+		TextTransparency = 1,
+		LayoutOrder = 2,
 	})
-	contentLabel.Parent = contentScroll
+	contentLabel.Parent = notif
 
 	-- Progress bar
 	local progressColor = typeColors[notifType] or Color3.fromRGB(140, 140, 148)
 	local progressTrack = create("Frame", {
 		Size = UDim2.new(1, 0, 0, 3),
 		BackgroundColor3 = Theme.Element,
-		BackgroundTransparency = 0.7,
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		LayoutOrder = 3,
 	}, { corner(2) })
@@ -2288,21 +2282,29 @@ function WM:Notify(config)
 	local progressBar = create("Frame", {
 		Size = UDim2.new(1, 0, 1, 0),
 		BackgroundColor3 = progressColor,
-		BackgroundTransparency = 0,
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 	}, { corner(2) })
 	progressBar.Parent = progressTrack
 
-	-- Fade in
-	tween(notif, { BackgroundTransparency = 0 }, 0.15)
+	-- ✅ Fade in the notification (background + text)
+	tween(notif, { BackgroundTransparency = 0 }, 0.2)
+	tween(titleLabel, { TextTransparency = 0 }, 0.2)
+	tween(contentLabel, { TextTransparency = 0 }, 0.2)
+	tween(progressTrack, { BackgroundTransparency = 0.7 }, 0.2)   -- make the track visible
+	tween(progressBar, { BackgroundTransparency = 0 }, 0.2)      -- make the fill visible
 
-	-- Animate progress bar
+	-- Animate progress bar (shrink over `duration` seconds)
 	TweenService:Create(progressBar, TweenInfo.new(duration, Enum.EasingStyle.Linear), { Size = UDim2.new(0, 0, 1, 0) }):Play()
 
-	-- Auto-dismiss
+	-- Auto‑dismiss
 	task.delay(duration, function()
 		if notif and notif.Parent then
 			tween(notif, { BackgroundTransparency = 1 }, 0.25)
+			tween(titleLabel, { TextTransparency = 1 }, 0.25)
+			tween(contentLabel, { TextTransparency = 1 }, 0.25)
+			tween(progressTrack, { BackgroundTransparency = 1 }, 0.25)
+			tween(progressBar, { BackgroundTransparency = 1 }, 0.25)
 			task.delay(0.3, function()
 				if notif then notif:Destroy() end
 			end)
