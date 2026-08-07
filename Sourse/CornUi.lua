@@ -2187,17 +2187,17 @@ function WM:Notify(config)
 
     playNotificationSound(notifType)
 
-    -- ✅ FIX 1: Root frame with a minimum starting height
-    local MIN_HEIGHT = 60
+    -- ✅ Root: automatic height, but with a UISizeConstraint to cap height (scaling fix)
+    local MAX_HEIGHT = 180  -- Cap at 180px to prevent full screen
     local notif = create("Frame", {
         Name = "Notification",
-        Size = UDim2.new(1, 0, 0, MIN_HEIGHT),
+        Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundColor3 = Theme.Header,
         BackgroundTransparency = 1,
         LayoutOrder = self._notifCount,
         ClipsDescendants = true,
-        ZIndex = 150,  -- ✅ FIX 4: high ZIndex
+        ZIndex = 150,
     }, {
         corner(12),
         stroke(barColor, 1),
@@ -2208,6 +2208,9 @@ function WM:Notify(config)
         create("UIListLayout", {
             Padding = UDim.new(0, 4),
             SortOrder = Enum.SortOrder.LayoutOrder,
+        }),
+        create("UISizeConstraint", {
+            MaxSize = Vector2.new(9999, MAX_HEIGHT),  -- ✅ Scaling fix: cap height
         }),
     })
     notif.Parent = self._notifHolder
@@ -2239,6 +2242,7 @@ function WM:Notify(config)
     })
     titleRow.Parent = notif
 
+    -- Icon (if type)
     if iconChar then
         local iconLabel = create("TextLabel", {
             Text = iconChar,
@@ -2247,11 +2251,12 @@ function WM:Notify(config)
             TextColor3 = barColor,
             BackgroundTransparency = 1,
             Size = UDim2.new(0, 18, 1, 0),
-            TextTransparency = 0,
+            TextTransparency = 0,  -- ✅ Visible
         })
         iconLabel.Parent = titleRow
     end
 
+    -- Title (visible)
     local titleLabel = create("TextLabel", {
         Text = title,
         Font = Enum.Font.GothamBold,
@@ -2261,13 +2266,13 @@ function WM:Notify(config)
         Size = UDim2.new(1, iconChar and -22 or 0, 1, 0),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextWrapped = true,
-        TextTransparency = 0,
+        TextTransparency = 0,  -- ✅ Visible
     })
     titleLabel.Parent = titleRow
 
-    -- ✅ FIX 2: Content container with a minimum height
+    -- ✅ Content: automatic height, but inside a container that can scroll if needed
     local contentContainer = create("Frame", {
-        Size = UDim2.new(1, 0, 0, 20),
+        Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundTransparency = 1,
         ClipsDescendants = true,
@@ -2286,16 +2291,16 @@ function WM:Notify(config)
         TextXAlignment = Enum.TextXAlignment.Left,
         TextYAlignment = Enum.TextYAlignment.Top,
         TextWrapped = true,
-        TextTransparency = 0,
+        TextTransparency = 0,  -- ✅ Visible
     })
     contentLabel.Parent = contentContainer
 
     -- Progress bar
     local progressColor = typeColors[notifType] or Color3.fromRGB(140, 140, 148)
     local progressTrack = create("Frame", {
-        Size = UDim2.new(1, 0, 0, 2),
+        Size = UDim2.new(1, 0, 0, 3),
         BackgroundColor3 = Theme.Element,
-        BackgroundTransparency = 1,
+        BackgroundTransparency = 0.3,  -- ✅ Visible (not 0.7)
         BorderSizePixel = 0,
         LayoutOrder = 3,
     }, { corner(2) })
@@ -2311,8 +2316,6 @@ function WM:Notify(config)
 
     -- Fade in the notification
     tween(notif, { BackgroundTransparency = 0 }, 0.15)
-    -- ✅ FIX 3: Make progress track visible (transparency 0.3 instead of 0.7)
-    tween(progressTrack, { BackgroundTransparency = 0.3 }, 0.2)
 
     -- Animate progress bar
     TweenService:Create(progressBar, TweenInfo.new(duration, Enum.EasingStyle.Linear), { Size = UDim2.new(0, 0, 1, 0) }):Play()
