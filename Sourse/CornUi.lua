@@ -2289,14 +2289,17 @@ function WM:Notify(config)
 
     -- ✅ Click area (single parent assignment)
     local clickArea = create("TextButton", {
-    Text = "",
-    BackgroundTransparency = 1,
-    Size = UDim2.new(1, 0, 1, 0),
-    Position = UDim2.new(0,0,0,0),
-    LayoutOrder = -999,
-    ZIndex = 140,
-	})
+	Text = "",
+	BackgroundTransparency = 1,
+	Size = UDim2.fromScale(1,1),
+	Position = UDim2.fromScale(0,0),
+	ZIndex = 140,
+		})
     clickArea.Parent = notif
+	local layout = notif:FindFirstChildOfClass("UIListLayout")
+			if layout then
+				clickArea.LayoutOrder = math.huge
+			end
     clickArea.MouseButton1Click:Connect(function()
         if notif then
             notif:Destroy()
