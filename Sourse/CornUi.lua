@@ -2197,13 +2197,7 @@ function WM:Notify(config)
 	notif.Parent = self._notifHolder
 
 	-- Click to dismiss
-	local clickArea = create("TextButton", {
-		Text = "",
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 1, 0),
-		ZIndex = 140,
-	})
-	clickArea.Parent = notif
+	
 	clickArea.MouseButton1Click:Connect(function()
 		notif:Destroy()
 	end)
@@ -2232,6 +2226,7 @@ function WM:Notify(config)
 			BackgroundTransparency = 1,
 			Size = UDim2.new(0, 16, 1, 0),
 			TextTransparency = 1,
+			ZIndex = 151,
 		})
 		iconLabel.Parent = titleRow
 		tween(iconLabel, { TextTransparency = 0 }, 0.2)
@@ -2247,6 +2242,7 @@ function WM:Notify(config)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextWrapped = true,
 		TextTransparency = 1,
+		ZIndex = 151,
 	})
 	titleLabel.Parent = titleRow
 
@@ -2264,6 +2260,7 @@ function WM:Notify(config)
 		TextWrapped = true,
 		TextTransparency = 1,
 		LayoutOrder = 2,
+		ZIndex = 151,
 	})
 	contentLabel.Parent = notif
 	task.wait()
@@ -2291,6 +2288,7 @@ function WM:Notify(config)
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		LayoutOrder = 3,
+		ZIndex = 151,
 	}, { corner(2) })
 	progressTrack.Parent = notif
 
@@ -2299,10 +2297,19 @@ function WM:Notify(config)
 		BackgroundColor3 = progressColor,
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
+		ZIndex = 152,
 	}, { corner(2) })
 	progressBar.Parent = progressTrack
 	progressTrack.ZIndex = 152
 	progressBar.ZIndex = 153
+
+	local clickArea = create("TextButton", {
+		Text = "",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 1, 0),
+		ZIndex = 140,
+	})
+	clickArea.Parent = notif
 
 	-- ✅ Fade in the notification (background + text)
 	tween(notif, { BackgroundTransparency = 0 }, 0.2)
