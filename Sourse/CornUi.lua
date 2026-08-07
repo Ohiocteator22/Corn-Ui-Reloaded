@@ -2187,11 +2187,11 @@ function WM:Notify(config)
 
     playNotificationSound(notifType)
 
-    -- ✅ FIXED: Correctly using Vector2 on UISizeConstraint
-    local MAX_HEIGHT = 160
+    -- ✅ SIMPLE: Use a fixed height frame with a ScrollingFrame inside
+    local MAX_HEIGHT = 120
     local notif = create("Frame", {
-        Size = UDim2.new(1, 0, 0, 0),
-        AutomaticSize = Enum.AutomaticSize.Y,
+        Name = "Notification",
+        Size = UDim2.new(1, 0, 0, MAX_HEIGHT),  -- Fixed height
         BackgroundColor3 = Theme.Header,
         BackgroundTransparency = 1,
         LayoutOrder = self._notifCount,
@@ -2203,14 +2203,14 @@ function WM:Notify(config)
             PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10),
             PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12),
         }),
-        create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
-        -- ✅ UISizeConstraint with Vector2, not UDim2
-        create("UISizeConstraint", {
-            MaxSize = Vector2.new(9999, MAX_HEIGHT),  -- Width unlimited, height capped
+        create("UIListLayout", {
+            Padding = UDim.new(0, 4),
+            SortOrder = Enum.SortOrder.LayoutOrder,
         }),
     })
     notif.Parent = self._notifHolder
 
+    -- Click to dismiss
     local clickArea = create("TextButton", {
         Text = "",
         BackgroundTransparency = 1,
@@ -2221,9 +2221,11 @@ function WM:Notify(config)
         notif:Destroy()
     end)
 
+    -- Title row
     local titleRow = create("Frame", {
-        Size = UDim2.new(1, 0, 0, 20),
+        Size = UDim2.new(1, 0, 0, 22),
         BackgroundTransparency = 1,
+        LayoutOrder = 1,
     }, {
         create("UIListLayout", {
             FillDirection = Enum.FillDirection.Horizontal,
@@ -2234,88 +2236,93 @@ function WM:Notify(config)
     })
     titleRow.Parent = notif
 
+    -- Icon
     if iconChar then
         local iconLabel = create("TextLabel", {
             Text = iconChar,
             Font = Enum.Font.GothamBold,
             TextSize = touch and 15 or 13,
             TextColor3 = barColor,
-            TextTransparency = 1,
             BackgroundTransparency = 1,
-            Size = UDim2.new(0, 16, 1, 0),
+            Size = UDim2.new(0, 18, 1, 0),
+            TextTransparency = 0,
         })
         iconLabel.Parent = titleRow
-        tween(iconLabel, { TextTransparency = 0 }, 0.2)
     end
 
+    -- Title
     local titleLabel = create("TextLabel", {
         Text = title,
         Font = Enum.Font.GothamBold,
         TextSize = touch and 16 or 14,
         TextColor3 = Theme.Text,
-        TextTransparency = 1,
         BackgroundTransparency = 1,
         Size = UDim2.new(1, iconChar and -22 or 0, 1, 0),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextWrapped = true,
+        TextTransparency = 0,
     })
     titleLabel.Parent = titleRow
 
-    -- ✅ Content container with clipping
-    local contentContainer = create("Frame", {
+    -- ✅ Content: Scrollable and visible
+    local contentScroll = create("ScrollingFrame", {
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ScrollBarThickness = 4,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
         ClipsDescendants = true,
+        LayoutOrder = 2,
     })
-    contentContainer.Parent = notif
+    contentScroll.Parent = notif
 
     local contentLabel = create("TextLabel", {
         Text = content,
         Font = Enum.Font.Gotham,
         TextSize = touch and 14 or 12,
         TextColor3 = Theme.SubText,
-        TextTransparency = 0,
         BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         TextXAlignment = Enum.TextXAlignment.Left,
         TextYAlignment = Enum.TextYAlignment.Top,
         TextWrapped = true,
+        TextTransparency = 0,  -- ✅ Visible!
+        RichText = true,
     })
-    contentLabel.Parent = contentContainer
+    contentLabel.Parent = contentScroll
 
+    -- Progress bar
     local progressColor = typeColors[notifType] or Color3.fromRGB(140, 140, 148)
     local progressTrack = create("Frame", {
-        Size = UDim2.new(1, 0, 0, 3),
+        Size = UDim2.new(1, 0, 0, 2),
         BackgroundColor3 = Theme.Element,
-        BackgroundTransparency = 1,
+        BackgroundTransparency = 0.7,
         BorderSizePixel = 0,
+        LayoutOrder = 3,
     }, { corner(2) })
     progressTrack.Parent = notif
 
     local progressBar = create("Frame", {
         Size = UDim2.new(1, 0, 1, 0),
         BackgroundColor3 = progressColor,
-        BackgroundTransparency = 1,
+        BackgroundTransparency = 0,
         BorderSizePixel = 0,
     }, { corner(2) })
     progressBar.Parent = progressTrack
 
-    tween(notif, { BackgroundTransparency = 0 }, 0.2)
-    tween(titleLabel, { TextTransparency = 0 }, 0.2)
-    tween(contentLabel, { TextTransparency = 0 }, 0.2)
-    tween(progressTrack, { BackgroundTransparency = 0.7 }, 0.2)
-    tween(progressBar, { BackgroundTransparency = 0 }, 0.2)
+    -- Fade in the notification
+    tween(notif, { BackgroundTransparency = 0 }, 0.15)
+
+    -- Animate progress bar
     TweenService:Create(progressBar, TweenInfo.new(duration, Enum.EasingStyle.Linear), { Size = UDim2.new(0, 0, 1, 0) }):Play()
 
+    -- Auto-dismiss
     task.delay(duration, function()
         if notif and notif.Parent then
-            tween(notif, { BackgroundTransparency = 1 }, 0.3)
-            tween(titleLabel, { TextTransparency = 1 }, 0.3)
-            tween(contentLabel, { TextTransparency = 1 }, 0.3)
-            tween(progressTrack, { BackgroundTransparency = 1 }, 0.3)
-            tween(progressBar, { BackgroundTransparency = 1 }, 0.3)
+            tween(notif, { BackgroundTransparency = 1 }, 0.25)
             task.delay(0.3, function()
                 if notif then notif:Destroy() end
             end)
