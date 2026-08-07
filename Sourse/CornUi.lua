@@ -2275,7 +2275,7 @@ function WM:Notify(config)
         Font = Enum.Font.Gotham,
         TextSize = touch and 14 or 12,
         TextColor3 = Theme.SubText,
-        TextTransparency = 1,
+        TextTransparency = 0,
         BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
