@@ -2174,14 +2174,13 @@ function WM:Notify(config)
 
 	-- ✅ ROOT: minimum height 70, automatic height, cap at 180
 	local notif = create("Frame", {
-		Name = "Notification",
-		Size = UDim2.new(1, 0, 0, 70),              -- ⬅️ FIX: start with a non‑zero height
-		AutomaticSize = Enum.AutomaticSize.Y,       -- grows if needed
-		BackgroundColor3 = Theme.Header,
-		BackgroundTransparency = 1,
-		LayoutOrder = self._notifCount,
-		ZIndex = 150,
-		ClipsDescendants = true,                    -- clips content if it exceeds the max height
+	Name = "Notification",
+	Size = UDim2.new(1, 0, 0, 70),
+	BackgroundColor3 = Theme.Header,
+	BackgroundTransparency = 1,
+	LayoutOrder = self._notifCount,
+	ZIndex = 150,
+	ClipsDescendants = false,                -- clips content if it exceeds the max height
 	}, {
 		corner(12),
 		stroke(barColor, 1),
@@ -2202,7 +2201,7 @@ function WM:Notify(config)
 		Text = "",
 		BackgroundTransparency = 1,
 		Size = UDim2.new(1, 0, 1, 0),
-		ZIndex = 150,
+		ZIndex = 140,
 	})
 	clickArea.Parent = notif
 	clickArea.MouseButton1Click:Connect(function()
@@ -2267,7 +2266,23 @@ function WM:Notify(config)
 		LayoutOrder = 2,
 	})
 	contentLabel.Parent = notif
+	task.wait()
 
+			local textHeight = contentLabel.TextBounds.Y
+			
+			contentLabel.Size = UDim2.new(
+				1,
+				0,
+				0,
+				textHeight
+			)
+			
+			notif.Size = UDim2.new(
+				1,
+				0,
+				0,
+				70 + textHeight
+			)
 	-- Progress bar
 	local progressColor = typeColors[notifType] or Color3.fromRGB(140, 140, 148)
 	local progressTrack = create("Frame", {
@@ -2286,6 +2301,8 @@ function WM:Notify(config)
 		BorderSizePixel = 0,
 	}, { corner(2) })
 	progressBar.Parent = progressTrack
+	progressTrack.ZIndex = 152
+	progressBar.ZIndex = 153
 
 	-- ✅ Fade in the notification (background + text)
 	tween(notif, { BackgroundTransparency = 0 }, 0.2)
