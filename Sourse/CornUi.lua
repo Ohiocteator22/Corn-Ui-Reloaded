@@ -2171,15 +2171,15 @@ function WM:Notify(config)
 
 	self._notifCount += 1
 
-	-- ✅ Root notification frame, with height cap
+	-- ✅ ROOT: Minimum height of 60px so it renders immediately
 	local notif = create("Frame", {
-		Size = UDim2.new(1, 0, 0, 0),
+		Size = UDim2.new(1, 0, 0, 60),          -- ⬅️ FIX: Give it a base height
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundColor3 = Theme.Header,
 		BackgroundTransparency = 1,
 		LayoutOrder = self._notifCount,
-		ZIndex = 150,               -- stays above everything
-		ClipsDescendants = true,    -- keeps content inside
+		ZIndex = 150,
+		ClipsDescendants = true,
 	}, {
 		corner(12),
 		stroke(barColor, 1),
@@ -2188,7 +2188,7 @@ function WM:Notify(config)
 			PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12),
 		}),
 		create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
-		-- ✅ SCALING FIX: cap height to prevent full screen
+		-- ✅ SCALING FIX: caps height so it never fills the whole screen
 		create("UISizeConstraint", {
 			MaxSize = Vector2.new(9999, 180),
 		}),
@@ -2250,7 +2250,7 @@ function WM:Notify(config)
 	})
 	contentLabel.Parent = notif
 
-	-- Countdown bar
+	-- Progress bar
 	local progressColor = typeColors[notifType] or Color3.fromRGB(140, 140, 148)
 	local progressTrack = create("Frame", {
 		Size = UDim2.new(1, 0, 0, 3),
@@ -2268,7 +2268,7 @@ function WM:Notify(config)
 	}, { corner(2) })
 	progressBar.Parent = progressTrack
 
-	-- Fade in & show text
+	-- Fade in
 	tween(notif, { BackgroundTransparency = 0 }, 0.2)
 	tween(titleLabel, { TextTransparency = 0 }, 0.2)
 	tween(contentLabel, { TextTransparency = 0 }, 0.2)
