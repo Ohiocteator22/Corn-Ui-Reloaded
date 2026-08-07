@@ -2187,15 +2187,17 @@ function WM:Notify(config)
 
     playNotificationSound(notifType)
 
-    -- ✅ SIMPLE NOTIFICATION: fixed height, no automatic sizing
-    local HEIGHT = 80  -- Fixed height
+    -- ✅ FIX 1: Root frame with a minimum starting height
+    local MIN_HEIGHT = 60
     local notif = create("Frame", {
         Name = "Notification",
-        Size = UDim2.new(1, 0, 0, HEIGHT),
+        Size = UDim2.new(1, 0, 0, MIN_HEIGHT),
+        AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundColor3 = Theme.Header,
         BackgroundTransparency = 1,
         LayoutOrder = self._notifCount,
         ClipsDescendants = true,
+        ZIndex = 150,  -- ✅ FIX 4: high ZIndex
     }, {
         corner(12),
         stroke(barColor, 1),
@@ -2215,6 +2217,7 @@ function WM:Notify(config)
         Text = "",
         BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 1, 0),
+        ZIndex = 150,
     })
     clickArea.Parent = notif
     clickArea.MouseButton1Click:Connect(function()
@@ -2236,7 +2239,6 @@ function WM:Notify(config)
     })
     titleRow.Parent = notif
 
-    -- Icon
     if iconChar then
         local iconLabel = create("TextLabel", {
             Text = iconChar,
@@ -2250,7 +2252,6 @@ function WM:Notify(config)
         iconLabel.Parent = titleRow
     end
 
-    -- Title (always visible)
     local titleLabel = create("TextLabel", {
         Text = title,
         Font = Enum.Font.GothamBold,
@@ -2260,33 +2261,41 @@ function WM:Notify(config)
         Size = UDim2.new(1, iconChar and -22 or 0, 1, 0),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextWrapped = true,
-        TextTransparency = 0,  -- ✅ VISIBLE
+        TextTransparency = 0,
     })
     titleLabel.Parent = titleRow
 
-    -- ✅ Content: simple label, NO AutomaticSize, NO ScrollingFrame
+    -- ✅ FIX 2: Content container with a minimum height
+    local contentContainer = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 20),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        BackgroundTransparency = 1,
+        ClipsDescendants = true,
+        LayoutOrder = 2,
+    })
+    contentContainer.Parent = notif
+
     local contentLabel = create("TextLabel", {
         Text = content,
         Font = Enum.Font.Gotham,
         TextSize = touch and 14 or 12,
         TextColor3 = Theme.SubText,
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 28),  -- Fixed height for content
+        Size = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
         TextXAlignment = Enum.TextXAlignment.Left,
         TextYAlignment = Enum.TextYAlignment.Top,
         TextWrapped = true,
-        TextTransparency = 0,  -- ✅ VISIBLE
-        LayoutOrder = 2,
-        ClipsDescendants = true,
+        TextTransparency = 0,
     })
-    contentLabel.Parent = notif
+    contentLabel.Parent = contentContainer
 
     -- Progress bar
     local progressColor = typeColors[notifType] or Color3.fromRGB(140, 140, 148)
     local progressTrack = create("Frame", {
         Size = UDim2.new(1, 0, 0, 2),
         BackgroundColor3 = Theme.Element,
-        BackgroundTransparency = 0.7,
+        BackgroundTransparency = 1,
         BorderSizePixel = 0,
         LayoutOrder = 3,
     }, { corner(2) })
@@ -2302,6 +2311,8 @@ function WM:Notify(config)
 
     -- Fade in the notification
     tween(notif, { BackgroundTransparency = 0 }, 0.15)
+    -- ✅ FIX 3: Make progress track visible (transparency 0.3 instead of 0.7)
+    tween(progressTrack, { BackgroundTransparency = 0.3 }, 0.2)
 
     -- Animate progress bar
     TweenService:Create(progressBar, TweenInfo.new(duration, Enum.EasingStyle.Linear), { Size = UDim2.new(0, 0, 1, 0) }):Play()
