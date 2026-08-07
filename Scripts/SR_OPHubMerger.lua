@@ -42,7 +42,7 @@ local PlayerGui = player:WaitForChild("PlayerGui")
 -- CORNUI SETUP
 -- ============================================================
 
-local Corn = loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/main/CornUi.lua"))()
+local Corn = loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/refs/heads/main/Sourse/CornUi.lua"))()
 local Window = Corn:CreateWindow({
 	Name = "OP Slap Royale",
 	Subtitle = "v1.9.2 Port",
