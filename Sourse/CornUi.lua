@@ -1116,6 +1116,7 @@ function WM:Notify(config)
 	local notif = create("Frame", {
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
+		 MaxSize = UDim2.new(1, 0, 0, 150),  
 		BackgroundColor3 = Theme.Header,
 		BackgroundTransparency = 1,
 		LayoutOrder = self._notifCount,
@@ -1190,6 +1191,8 @@ function WM:Notify(config)
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top, 
+    	MaxSize = UDim2.new(1, 0, 0, 80), 
 		TextWrapped = true,
 	})
 	contentLabel.Parent = notif
