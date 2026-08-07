@@ -1616,58 +1616,140 @@ function Library:CreateWindow(config)
 				body.Visible = not minimized
 			end,
 			["export"] = function(w)
-				local json = Library:ExportConfig()
-				if json then
-					local popup = create("Frame", {
-						Size = UDim2.new(0, 400, 0, 300),
-						Position = UDim2.new(0.5, 0, 0.5, 0),
-						AnchorPoint = Vector2.new(0.5, 0.5),
-						BackgroundColor3 = Theme.Header,
-						ZIndex = 201,
-					}, { corner(14), stroke(Theme.Accent, 1.5) })
-					popup.Parent = screenGui
-					
-					create("TextLabel", {
-						Text = "Export Config",
-						Font = Enum.Font.GothamBold,
-						TextSize = 16,
-						TextColor3 = Theme.Text,
-						BackgroundTransparency = 1,
-						Size = UDim2.new(1, 0, 0, 30),
-						Position = UDim2.new(0, 0, 0, 8),
-					}).Parent = popup
-					
-					local textBox = create("TextBox", {
-						Text = json,
-						Font = Enum.Font.Gotham,
-						TextSize = 12,
-						TextColor3 = Theme.Text,
-						BackgroundColor3 = Theme.Element,
-						Size = UDim2.new(1, -20, 1, -60),
-						Position = UDim2.new(0, 10, 0, 40),
-						ClearTextOnFocus = false,
-						TextWrapped = true,
-						TextScaled = true,
-						TextXAlignment = Enum.TextXAlignment.Left,
-						TextYAlignment = Enum.TextYAlignment.Top,
-					}, { corner(8) })
-					textBox.Parent = popup
-					
-					local closeBtn = create("TextButton", {
-						Text = "Close",
-						Font = Enum.Font.GothamBold,
-						TextSize = 14,
-						TextColor3 = Theme.Text,
-						BackgroundColor3 = Theme.Accent,
-						Size = UDim2.new(0, 80, 0, 30),
-						Position = UDim2.new(0.5, -40, 1, -40),
-					}, { corner(8) })
-					closeBtn.Parent = popup
-					closeBtn.MouseButton1Click:Connect(function()
-						popup:Destroy()
-					end)
-				end
-			end,
+    			local json = Library:ExportConfig()
+    
+    			-- If empty, provide fallback
+    			if not json or json == "" then
+	        		json = "{}"
+    			end
+    
+    			-- Debug print to console
+    			print("[Export] JSON length:", #json)
+    			print("[Export] JSON preview:", string.sub(json, 1, 100))
+    
+    			local popup = create("Frame", {
+			        Size = UDim2.new(0, 400, 0, 300),
+        			Position = UDim2.new(0.5, 0, 0.5, 0),
+        			AnchorPoint = Vector2.new(0.5, 0.5),
+        			BackgroundColor3 = Theme.Header,
+        			ZIndex = 201,
+    				}, { corner(14), stroke(Theme.Accent, 1.5) })
+    				popup.Parent = screenGui
+    
+    			create("TextLabel", {
+        			Text = "Export Config",
+			        Font = Enum.Font.GothamBold,
+        			TextSize = 16,
+        			TextColor3 = Theme.Text,
+			        BackgroundTransparency = 1,
+        			Size = UDim2.new(1, 0, 0, 30),
+        			Position = UDim2.new(0, 0, 0, 8),
+    			}).Parent = popup
+    
+    			-- ✅ FIX: Use a ScrollingFrame with proper text display
+    			local scrollFrame = create("ScrollingFrame", {
+			        Size = UDim2.new(1, -20, 1, -70),
+        			Position = UDim2.new(0, 10, 0, 40),
+        			BackgroundColor3 = Theme.Element,
+       				BorderSizePixel = 0,
+        			ScrollBarThickness = 6,
+        			CanvasSize = UDim2.new(0, 0, 0, 0),
+        			AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    			}, { corner(8) })
+    			scrollFrame.Parent = popup
+    
+    			local textBox = create("TextBox", {
+        			Text = json,
+        			Font = Enum.Font.Gotham,
+			        TextSize = 13,
+			        TextColor3 = Theme.Text,
+			        BackgroundTransparency = 1,
+        			Size = UDim2.new(1, 0, 0, 0),
+       				AutomaticSize = Enum.AutomaticSize.Y,
+        			ClearTextOnFocus = false,
+        			TextWrapped = true,
+        			TextXAlignment = Enum.TextXAlignment.Left,
+        			TextYAlignment = Enum.TextYAlignment.Top,
+        			-- ✅ Important: No TextScaled (it messes up display)
+    			})
+    			textBox.Parent = scrollFrame
+    
+    			-- ✅ Add a copy button
+    			local copyBtn = create("TextButton", {
+        			Text = "📋 Copy",
+			        Font = Enum.Font.GothamBold,
+       				TextSize = 13,
+        			TextColor3 = Theme.Text,
+        			BackgroundColor3 = Theme.Accent,
+        			Size = UDim2.new(0, 70, 0, 28),
+        			Position = UDim2.new(1, -80, 1, -38),
+    			}, { corner(8) })
+    			copyBtn.Parent = popup
+    			copyBtn.MouseButton1Click:Connect(function()
+			        -- Open a small popup with selectable text
+        			local copyPopup = create("Frame", {
+            			Size = UDim2.new(0, 380, 0, 80),
+            			Position = UDim2.new(0.5, 0, 0.5, 0),
+            			AnchorPoint = Vector2.new(0.5, 0.5),
+            			BackgroundColor3 = Theme.Header,
+            			ZIndex = 300,
+        			}, { corner(14), stroke(Theme.Accent, 1.5) })
+        			copyPopup.Parent = screenGui
+        
+        			create("TextLabel", {
+            			Text = "Select and copy the text below:",
+            			Font = Enum.Font.Gotham,
+           				TextSize = 12,
+            			TextColor3 = Theme.SubText,
+           				BackgroundTransparency = 1,
+            			Size = UDim2.new(1, -20, 0, 20),
+            			Position = UDim2.new(0, 10, 0, 8),
+            			TextXAlignment = Enum.TextXAlignment.Left,
+        			}).Parent = copyPopup
+        
+        			local copyBox = create("TextBox", {
+			            Text = json,
+			            Font = Enum.Font.Gotham,
+			            TextSize = 12,
+			            TextColor3 = Theme.Text,
+			            BackgroundColor3 = Theme.Element,
+			            Size = UDim2.new(1, -20, 0, 30),
+			            Position = UDim2.new(0, 10, 0, 32),
+			            ClearTextOnFocus = false,
+			            TextWrapped = true,
+			            TextXAlignment = Enum.TextXAlignment.Left,
+			        }, { corner(6) })
+			        copyBox.Parent = copyPopup
+			        
+			        local closeCopyBtn = create("TextButton", {
+			            Text = "Close",
+			            Font = Enum.Font.GothamBold,
+			            TextSize = 12,
+			            TextColor3 = Theme.Text,
+			            BackgroundColor3 = Theme.Accent,
+			            Size = UDim2.new(0, 60, 0, 24),
+			            Position = UDim2.new(0.5, -30, 1, -30),
+			        }, { corner(6) })
+			        closeCopyBtn.Parent = copyPopup
+			        closeCopyBtn.MouseButton1Click:Connect(function()
+			            copyPopup:Destroy()
+			        end)
+			    end)
+			    
+			    local closeBtn = create("TextButton", {
+			        Text = "Close",
+			        Font = Enum.Font.GothamBold,
+			        TextSize = 14,
+			        TextColor3 = Theme.Text,
+			        BackgroundColor3 = Theme.Accent,
+			        Size = UDim2.new(0, 70, 0, 28),
+			        Position = UDim2.new(0.5, -35, 1, -38),
+			    }, { corner(8) })
+			    closeBtn.Parent = popup
+			    closeBtn.MouseButton1Click:Connect(function()
+			        popup:Destroy()
+			    end)
+			end
 			["screenshot"] = function(w)
 				local ok, result = pcall(function()
 					return GuiService:CaptureScreenshot()
@@ -2022,167 +2104,176 @@ local WM = Library.WindowMethods
 
 -- Window:Notify (FIXED — notification sizing)
 function WM:Notify(config)
-	config = config or {}
-	local touch = self._touch
-	local title = config.Title or "Notification"
-	local content = config.Content or ""
-	local duration = config.Duration or 4
-	local notifType = config.Type
+    config = config or {}
+    local touch = self._touch
+    local title = config.Title or "Notification"
+    local content = config.Content or ""
+    local duration = config.Duration or 4
+    local notifType = config.Type
 
-	local typeColors = {
-		success = Color3.fromRGB(70, 200, 110),
-		error = Color3.fromRGB(230, 75, 75),
-		warning = Color3.fromRGB(255, 175, 45),
-		info = Theme.Accent,
-	}
-	local typeIcons = {
-		success = "✓",
-		error = "✕",
-		warning = "!",
-		info = "i",
-	}
-	local barColor = typeColors[notifType] or Theme.Accent
-	local iconChar = typeIcons[notifType]
+    local typeColors = {
+        success = Color3.fromRGB(70, 200, 110),
+        error = Color3.fromRGB(230, 75, 75),
+        warning = Color3.fromRGB(255, 175, 45),
+        info = Theme.Accent,
+    }
+    local typeIcons = {
+        success = "✓",
+        error = "✕",
+        warning = "!",
+        info = "i",
+    }
+    local barColor = typeColors[notifType] or Theme.Accent
+    local iconChar = typeIcons[notifType]
 
-	self._notifCount += 1
+    self._notifCount += 1
 
-	Library._notifSeq = (Library._notifSeq or 0) + 1
-	local historyEntry = {
-		Title = title,
-		Content = content,
-		Type = notifType,
-		Time = os.time(),
-		Seq = Library._notifSeq,
-	}
-	table.insert(Library.NotificationHistory, historyEntry)
-	if #Library.NotificationHistory > Library.MAX_NOTIFICATION_HISTORY then
-		table.remove(Library.NotificationHistory, 1)
-	end
-	-- FIX: Use notificationLoggedEvent (BindableEvent) not Library.NotificationLogged (Signal)
-	notificationLoggedEvent:Fire(historyEntry)
-	
-	playNotificationSound(notifType)
+    Library._notifSeq = (Library._notifSeq or 0) + 1
+    local historyEntry = {
+        Title = title,
+        Content = content,
+        Type = notifType,
+        Time = os.time(),
+        Seq = Library._notifSeq,
+    }
+    table.insert(Library.NotificationHistory, historyEntry)
+    if #Library.NotificationHistory > Library.MAX_NOTIFICATION_HISTORY then
+        table.remove(Library.NotificationHistory, 1)
+    end
+    notificationLoggedEvent:Fire(historyEntry)
+    
+    playNotificationSound(notifType)
 
-	-- FIX: Notification sizing — use fixed max height and proper TextWrapped
-	local notif = create("Frame", {
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		BackgroundColor3 = Theme.Header,
-		BackgroundTransparency = 1,
-		LayoutOrder = self._notifCount,
-	}, {
-		corner(12),
-		stroke(barColor, 1),
-		create("UIPadding", {
-			PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10),
-			PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12),
-		}),
-		create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
-	})
-	notif.Parent = self._notifHolder
-	
-	local clickArea = create("TextButton", {
-		Text = "",
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 1, 0),
-	})
-	clickArea.Parent = notif
-	clickArea.MouseButton1Click:Connect(function()
-		notif:Destroy()
-	end)
+    -- FIX: Use a fixed max height with a ScrollingFrame inside
+    local MAX_NOTIFICATION_HEIGHT = 180  -- Max height in pixels
+    local notif = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        BackgroundColor3 = Theme.Header,
+        BackgroundTransparency = 1,
+        LayoutOrder = self._notifCount,
+        ClipsDescendants = true,  -- ✅ Clip content that overflows
+    }, {
+        corner(12),
+        stroke(barColor, 1),
+        create("UIPadding", {
+            PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10),
+            PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12),
+        }),
+        create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
+    })
+    notif.Parent = self._notifHolder
+    
+    local clickArea = create("TextButton", {
+        Text = "",
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 1, 0),
+    })
+    clickArea.Parent = notif
+    clickArea.MouseButton1Click:Connect(function()
+        notif:Destroy()
+    end)
 
-	local titleRow = create("Frame", {
-		Size = UDim2.new(1, 0, 0, 20),
-		BackgroundTransparency = 1,
-	}, {
-		create("UIListLayout", {
-			FillDirection = Enum.FillDirection.Horizontal,
-			Padding = UDim.new(0, 6),
-			VerticalAlignment = Enum.VerticalAlignment.Center,
-			SortOrder = Enum.SortOrder.LayoutOrder,
-		}),
-	})
-	titleRow.Parent = notif
+    local titleRow = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 20),
+        BackgroundTransparency = 1,
+    }, {
+        create("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            Padding = UDim.new(0, 6),
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+        }),
+    })
+    titleRow.Parent = notif
 
-	if iconChar then
-		local iconLabel = create("TextLabel", {
-			Text = iconChar,
-			Font = Enum.Font.GothamBold,
-			TextSize = touch and 15 or 13,
-			TextColor3 = barColor,
-			TextTransparency = 1,
-			BackgroundTransparency = 1,
-			Size = UDim2.new(0, 16, 1, 0),
-		})
-		iconLabel.Parent = titleRow
-		tween(iconLabel, { TextTransparency = 0 }, 0.2)
-	end
+    if iconChar then
+        local iconLabel = create("TextLabel", {
+            Text = iconChar,
+            Font = Enum.Font.GothamBold,
+            TextSize = touch and 15 or 13,
+            TextColor3 = barColor,
+            TextTransparency = 1,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0, 16, 1, 0),
+        })
+        iconLabel.Parent = titleRow
+        tween(iconLabel, { TextTransparency = 0 }, 0.2)
+    end
 
-	local titleLabel = create("TextLabel", {
-		Text = title,
-		Font = Enum.Font.GothamBold,
-		TextSize = touch and 16 or 14,
-		TextColor3 = Theme.Text,
-		TextTransparency = 1,
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, iconChar and -22 or 0, 1, 0),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextWrapped = true,
-	})
-	titleLabel.Parent = titleRow
+    local titleLabel = create("TextLabel", {
+        Text = title,
+        Font = Enum.Font.GothamBold,
+        TextSize = touch and 16 or 14,
+        TextColor3 = Theme.Text,
+        TextTransparency = 1,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, iconChar and -22 or 0, 1, 0),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextWrapped = true,
+    })
+    titleLabel.Parent = titleRow
 
-	-- FIX: Content label with proper size and wrapping
-	local contentLabel = create("TextLabel", {
-		Text = content,
-		Font = Enum.Font.Gotham,
-		TextSize = touch and 14 or 12,
-		TextColor3 = Theme.SubText,
-		TextTransparency = 1,
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextYAlignment = Enum.TextYAlignment.Top,
-		TextWrapped = true,
-	})
-	contentLabel.Parent = notif
+    -- ✅ FIX: Content with height limit
+    local contentContainer = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        BackgroundTransparency = 1,
+        ClipsDescendants = true,  -- ✅ Clip overflow
+    })
+    contentContainer.Parent = notif
 
-	local progressColor = typeColors[notifType] or Color3.fromRGB(140, 140, 148)
-	local progressTrack = create("Frame", {
-		Size = UDim2.new(1, 0, 0, 3),
-		BackgroundColor3 = Theme.Element,
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-	}, { corner(2) })
-	progressTrack.Parent = notif
+    local contentLabel = create("TextLabel", {
+        Text = content,
+        Font = Enum.Font.Gotham,
+        TextSize = touch and 14 or 12,
+        TextColor3 = Theme.SubText,
+        TextTransparency = 1,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+        TextWrapped = true,
+    })
+    contentLabel.Parent = contentContainer
 
-	local progressBar = create("Frame", {
-		Size = UDim2.new(1, 0, 1, 0),
-		BackgroundColor3 = progressColor,
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-	}, { corner(2) })
-	progressBar.Parent = progressTrack
+    local progressColor = typeColors[notifType] or Color3.fromRGB(140, 140, 148)
+    local progressTrack = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 3),
+        BackgroundColor3 = Theme.Element,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+    }, { corner(2) })
+    progressTrack.Parent = notif
 
-	tween(notif, { BackgroundTransparency = 0 }, 0.2)
-	tween(titleLabel, { TextTransparency = 0 }, 0.2)
-	tween(contentLabel, { TextTransparency = 0 }, 0.2)
-	tween(progressTrack, { BackgroundTransparency = 0.7 }, 0.2)
-	tween(progressBar, { BackgroundTransparency = 0 }, 0.2)
-	TweenService:Create(progressBar, TweenInfo.new(duration, Enum.EasingStyle.Linear), { Size = UDim2.new(0, 0, 1, 0) }):Play()
+    local progressBar = create("Frame", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundColor3 = progressColor,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+    }, { corner(2) })
+    progressBar.Parent = progressTrack
 
-	task.delay(duration, function()
-		if notif and notif.Parent then
-			tween(notif, { BackgroundTransparency = 1 }, 0.3)
-			tween(titleLabel, { TextTransparency = 1 }, 0.3)
-			tween(contentLabel, { TextTransparency = 1 }, 0.3)
-			tween(progressTrack, { BackgroundTransparency = 1 }, 0.3)
-			tween(progressBar, { BackgroundTransparency = 1 }, 0.3)
-			task.delay(0.3, function()
-				if notif then notif:Destroy() end
-			end)
-		end
-	end)
+    tween(notif, { BackgroundTransparency = 0 }, 0.2)
+    tween(titleLabel, { TextTransparency = 0 }, 0.2)
+    tween(contentLabel, { TextTransparency = 0 }, 0.2)
+    tween(progressTrack, { BackgroundTransparency = 0.7 }, 0.2)
+    tween(progressBar, { BackgroundTransparency = 0 }, 0.2)
+    TweenService:Create(progressBar, TweenInfo.new(duration, Enum.EasingStyle.Linear), { Size = UDim2.new(0, 0, 1, 0) }):Play()
+
+    task.delay(duration, function()
+        if notif and notif.Parent then
+            tween(notif, { BackgroundTransparency = 1 }, 0.3)
+            tween(titleLabel, { TextTransparency = 1 }, 0.3)
+            tween(contentLabel, { TextTransparency = 1 }, 0.3)
+            tween(progressTrack, { BackgroundTransparency = 1 }, 0.3)
+            tween(progressBar, { BackgroundTransparency = 1 }, 0.3)
+            task.delay(0.3, function()
+                if notif then notif:Destroy() end
+            end)
+        end
+    end)
 end
 
 -- Window:SetTheme (unchanged)
