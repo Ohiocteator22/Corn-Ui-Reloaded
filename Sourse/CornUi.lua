@@ -2187,8 +2187,8 @@ function WM:Notify(config)
 
     playNotificationSound(notifType)
 
-    -- ✅ Root: automatic height, but with a UISizeConstraint to cap height (scaling fix)
-    local MAX_HEIGHT = 180  -- Cap at 180px to prevent full screen
+    -- ✅ SCALING FIX: Use UISizeConstraint to cap height at 180px (prevents full screen)
+    local MAX_HEIGHT = 180
     local notif = create("Frame", {
         Name = "Notification",
         Size = UDim2.new(1, 0, 0, 0),
@@ -2209,8 +2209,9 @@ function WM:Notify(config)
             Padding = UDim.new(0, 4),
             SortOrder = Enum.SortOrder.LayoutOrder,
         }),
+        -- ✅ This is the scaling fix that worked
         create("UISizeConstraint", {
-            MaxSize = Vector2.new(9999, MAX_HEIGHT),  -- ✅ Scaling fix: cap height
+            MaxSize = Vector2.new(9999, MAX_HEIGHT),
         }),
     })
     notif.Parent = self._notifHolder
@@ -2251,12 +2252,12 @@ function WM:Notify(config)
             TextColor3 = barColor,
             BackgroundTransparency = 1,
             Size = UDim2.new(0, 18, 1, 0),
-            TextTransparency = 0,  -- ✅ Visible
+            TextTransparency = 0,  -- ✅ VISIBLE
         })
         iconLabel.Parent = titleRow
     end
 
-    -- Title (visible)
+    -- Title
     local titleLabel = create("TextLabel", {
         Text = title,
         Font = Enum.Font.GothamBold,
@@ -2266,11 +2267,11 @@ function WM:Notify(config)
         Size = UDim2.new(1, iconChar and -22 or 0, 1, 0),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextWrapped = true,
-        TextTransparency = 0,  -- ✅ Visible
+        TextTransparency = 0,  -- ✅ VISIBLE
     })
     titleLabel.Parent = titleRow
 
-    -- ✅ Content: automatic height, but inside a container that can scroll if needed
+    -- ✅ Content container (uses AutomaticSize to grow)
     local contentContainer = create("Frame", {
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
@@ -2291,14 +2292,14 @@ function WM:Notify(config)
         TextXAlignment = Enum.TextXAlignment.Left,
         TextYAlignment = Enum.TextYAlignment.Top,
         TextWrapped = true,
-        TextTransparency = 0,  -- ✅ Visible
+        TextTransparency = 0,  -- ✅ VISIBLE
     })
     contentLabel.Parent = contentContainer
 
     -- Progress bar
     local progressColor = typeColors[notifType] or Color3.fromRGB(140, 140, 148)
     local progressTrack = create("Frame", {
-        Size = UDim2.new(1, 0, 0, 3),
+        Size = UDim2.new(1, 0, 0, 2),
         BackgroundColor3 = Theme.Element,
         BackgroundTransparency = 0.3,  -- ✅ Visible (not 0.7)
         BorderSizePixel = 0,
