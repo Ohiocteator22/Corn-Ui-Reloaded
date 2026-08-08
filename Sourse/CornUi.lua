@@ -2175,7 +2175,7 @@ function WM:Notify(config)
     -- ✅ FIXED: Create() includes ALL children, including UISizeConstraint
     local notif = create("Frame", {
     Name = "Notification",
-    Size = UDim2.new(1, touch and -40 or -60, 0, 70),
+    Size = UDim2.new(0, touch and 300 or 360, 0, 70),
     BackgroundColor3 = Theme.Header,
     BackgroundTransparency = 1,
     LayoutOrder = self._notifCount,
@@ -2251,7 +2251,8 @@ notif.Parent = self._notifHolder
         TextColor3 = Theme.SubText,
         BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 0),
-        AutomaticSize = Enum.AutomaticSize.Y,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		TextWrapped = true,
         TextXAlignment = Enum.TextXAlignment.Left,
         TextYAlignment = Enum.TextYAlignment.Top,
         TextWrapped = true,
