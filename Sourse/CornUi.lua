@@ -2174,36 +2174,31 @@ function WM:Notify(config)
 
     -- ✅ FIXED: Create() includes ALL children, including UISizeConstraint
     local notif = create("Frame", {
-        Name = "Notification",
-        Size = UDim2.new(1, 0, 0, 70),
-        AutomaticSize = Enum.AutomaticSize.Y,
-        BackgroundColor3 = Theme.Header,
-        BackgroundTransparency = 1,
-        LayoutOrder = self._notifCount,
-        ZIndex = 150,
-        ClipsDescendants = false,
-    }, {
-        corner(12),
-        stroke(barColor, 1),
+    Name = "Notification",
+    Size = UDim2.new(1, touch and -40 or -60, 0, 70),
+    BackgroundColor3 = Theme.Header,
+    BackgroundTransparency = 1,
+    LayoutOrder = self._notifCount,
+    ZIndex = 150,
+    ClipsDescendants = true,
+}, {
+    corner(12),
+    stroke(barColor, 1),
 
-        create("UIPadding", {
-            PaddingTop = UDim.new(0, 10),
-            PaddingBottom = UDim.new(0, 10),
-            PaddingLeft = UDim.new(0, 12),
-            PaddingRight = UDim.new(0, 12),
-        }),
+    create("UIPadding", {
+        PaddingTop = UDim.new(0, 10),
+        PaddingBottom = UDim.new(0, 10),
+        PaddingLeft = UDim.new(0, 12),
+        PaddingRight = UDim.new(0, 12),
+    }),
 
-        create("UIListLayout", {
-            Padding = UDim.new(0, 4),
-            SortOrder = Enum.SortOrder.LayoutOrder,
-        }),
+    create("UIListLayout", {
+        Padding = UDim.new(0, 4),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+    }),
+})
 
-        -- ✅ UISizeConstraint INSIDE the create() call
-        create("UISizeConstraint", {
-            MaxSize = Vector2.new(9999, 180),
-        }),
-    })
-    notif.Parent = self._notifHolder
+notif.Parent = self._notifHolder
 
     -- Title row
     local titleRow = create("Frame", {
@@ -2285,30 +2280,8 @@ function WM:Notify(config)
         BorderSizePixel = 0,
         ZIndex = 152,
     }, { corner(2) })
-    progressBar.Parent = progressTrack
-
-    -- ✅ Click area (single parent assignment)
-    local clickArea = create("TextButton", {
-	Text = "",
-	BackgroundTransparency = 1,
-	Size = UDim2.fromScale(1,1),
-	Position = UDim2.fromScale(0,0),
-	ZIndex = 140,
-		})
-    clickArea.Parent = notif
-	clickArea.Visible = true
-	clickArea.Active = true
-	clickArea.Selectable = false
-	
-	local layout = notif:FindFirstChildOfClass("UIListLayout")
-	if layout then
-		clickArea.LayoutOrder = 999999
-	end
-    clickArea.MouseButton1Click:Connect(function()
-        if notif then
-            notif:Destroy()
-        end
-    end)
+    progressBar.Parent = progressTrack   
+ 
 
     -- ✅ Fade in
     tween(notif, { BackgroundTransparency = 0 }, 0.2)
