@@ -15,6 +15,8 @@ local ThemeManager =
 
 local Utils =
 	require(script.Parent.Parent.Core.Utils)
+local Widgets =
+	require(script.Parent.Parent.Widgets)
 
 
 
@@ -30,16 +32,15 @@ function Methods:CreateTab(window, name, config)
 
 	local Tab = {
 
-		Name = name or "Tab",
+	Name=name,
 
-		Window = window,
+	Widgets={},
 
-		Widgets = {},
+	Window=window,
 
-		Config = config,
+	Container=nil,
 
-	}
-
+}
 
 
 	table.insert(
