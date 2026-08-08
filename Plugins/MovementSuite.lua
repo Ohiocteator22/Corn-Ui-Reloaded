@@ -7,7 +7,7 @@
 		local Corn = loadstring(game:HttpGet("<raw CornUi.lua url>"))()
 		local Window = Corn:CreateWindow({ Name = "My Hub" })
 		Corn:LoadPlugins({
-			"https://raw.githubusercontent.com/you/plugins/main/MovementSuite.lua",
+			"https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/refs/heads/main/Plugins/MovementSuite.lua",
 		}, Window)
 
 	Notes:
