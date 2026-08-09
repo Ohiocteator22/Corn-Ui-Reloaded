@@ -2,14 +2,13 @@
 -- CORNUI DIVIDER WIDGET
 -- ============================================================
 
+local Utils =
+	require(script.Parent.Parent.Core.Utils)
 
-local Utils = require(
-	script.Parent.Parent.Core.Utils
-)
 
-local State = require(
-	script.Parent.Parent.Core.State
-)
+local ThemeManager =
+	require(script.Parent.Parent.Core.ThemeManager)
+
 
 
 local Divider = {}
@@ -18,13 +17,17 @@ Divider.__index = Divider
 
 
 
+
+
 -- ============================================================
 -- CREATE
 -- ============================================================
 
-function Divider.new(parent, config)
+function Divider.new(Tab, config)
+
 
 	config = config or {}
+
 
 
 	local self =
@@ -32,21 +35,34 @@ function Divider.new(parent, config)
 
 
 
-	self.Parent = parent
+	self.Type =
+		"Divider"
+
+
+
+	self.Tab =
+		Tab
+
+
+
+	self.Parent =
+		Tab.Page
+
 
 
 	self.Color =
 		config.Color
 
 
+
 	self.Thickness =
-		config.Thickness
-		or 1
+		config.Thickness or 1
+
 
 
 	self.Margin =
-		config.Margin
-		or 6
+		config.Margin or 6
+
 
 
 
@@ -54,9 +70,23 @@ function Divider.new(parent, config)
 
 
 
+	table.insert(
+		Tab.Elements,
+		self
+	)
+
+
+
+	Tab.Window:RegisterWidget(
+		self
+	)
+
+
+
 	return self
 
 end
+
 
 
 
@@ -68,35 +98,36 @@ end
 function Divider:_Create()
 
 
-	State:RegisterWidget(self)
+
+	local holder =
+		Utils.Create(
+			"Frame",
+			{
+
+				Name =
+					"Divider",
 
 
-
-	local holder = Utils.Create(
-		"Frame",
-		{
-
-			Name = "Divider",
-
-
-			BackgroundTransparency = 1,
-
-
-			Size =
-				UDim2.new(
+				BackgroundTransparency =
 					1,
-					0,
-					0,
-					self.Thickness + self.Margin * 2
-				),
 
 
-			LayoutOrder =
-				#self.Parent:GetChildren()
+				Size =
+					UDim2.new(
+						1,
+						0,
+						0,
+						self.Thickness
+						+
+						self.Margin * 2
+					),
 
-		}
 
-	)
+				LayoutOrder =
+					#self.Parent:GetChildren()
+
+			}
+		)
 
 
 
@@ -106,52 +137,54 @@ function Divider:_Create()
 
 
 
-	local line = Utils.Create(
-		"Frame",
-		{
 
-			Name = "Line",
+	local line =
+		Utils.Create(
+			"Frame",
+			{
 
-
-			BackgroundColor3 =
-				self.Color
-				or Color3.fromRGB(
-					60,
-					60,
-					65
-				),
+				Name =
+					"Line",
 
 
-			BorderSizePixel = 0,
+				BackgroundColor3 =
+					self.Color
+					or
+					ThemeManager:GetColor(
+						"Stroke"
+					),
 
 
-			Position =
-				UDim2.new(
+				BorderSizePixel =
 					0,
-					0,
-					0.5,
-					0
-				),
 
 
-			AnchorPoint =
-				Vector2.new(
-					0,
-					0.5
-				),
+				Position =
+					UDim2.new(
+						0,
+						0,
+						0.5,
+						0
+					),
 
 
-			Size =
-				UDim2.new(
-					1,
-					0,
-					0,
-					self.Thickness
-				)
+				AnchorPoint =
+					Vector2.new(
+						0,
+						0.5
+					),
 
-		}
 
-	)
+				Size =
+					UDim2.new(
+						1,
+						0,
+						0,
+						self.Thickness
+					)
+
+			}
+		)
 
 
 
@@ -160,15 +193,20 @@ function Divider:_Create()
 
 
 
+
+
 	self.Instance =
 		holder
+
 
 
 	self.Line =
 		line
 
 
+
 end
+
 
 
 
@@ -180,7 +218,9 @@ end
 function Divider:SetColor(color)
 
 
-	self.Color = color
+	self.Color =
+		color
+
 
 
 	if self.Line then
@@ -195,10 +235,14 @@ end
 
 
 
+
+
 function Divider:SetThickness(value)
 
 
-	self.Thickness = value
+	self.Thickness =
+		value
+
 
 
 	if self.Line then
@@ -219,6 +263,7 @@ end
 
 
 
+
 function Divider:Destroy()
 
 
@@ -229,10 +274,14 @@ function Divider:Destroy()
 	end
 
 
-	self.Instance = nil
+
+	self.Instance =
+		nil
 
 
 end
+
+
 
 
 
