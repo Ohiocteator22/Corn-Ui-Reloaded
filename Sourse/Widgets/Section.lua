@@ -3,13 +3,9 @@
 -- ============================================================
 
 
-local Utils = require(
-	script.Parent.Parent.Core.Utils
-)
+local Utils =
+	require(script.Parent.Parent.Core.Utils)
 
-local State = require(
-	script.Parent.Parent.Core.State
-)
 
 
 local Section = {}
@@ -18,13 +14,19 @@ Section.__index = Section
 
 
 
+
+
+
 -- ============================================================
 -- CREATE
 -- ============================================================
 
-function Section.new(parent, config)
+function Section.new(Tab, config)
 
-	config = config or {}
+
+	config =
+		config or {}
+
 
 
 	local self =
@@ -32,7 +34,19 @@ function Section.new(parent, config)
 
 
 
-	self.Parent = parent
+	self.Type =
+		"Section"
+
+
+
+	self.Tab =
+		Tab
+
+
+
+	self.Parent =
+		Tab.Page
+
 
 
 	self.Title =
@@ -53,13 +67,31 @@ function Section.new(parent, config)
 
 
 
+
+
 	self:_Create()
+
+
+
+	table.insert(
+		Tab.Elements,
+		self
+	)
+
+
+
+	Tab.Window:RegisterWidget(
+		self
+	)
 
 
 
 	return self
 
 end
+
+
+
 
 
 
@@ -71,61 +103,59 @@ end
 function Section:_Create()
 
 
-	State:RegisterWidget(self)
+
+	local container =
+		Utils.Create(
+			"Frame",
+			{
+
+				Name =
+					self.Title,
 
 
-
-	local container = Utils.Create(
-		"Frame",
-		{
-
-			Name = self.Title,
-
-
-			BackgroundTransparency = 1,
-
-
-			Size =
-				UDim2.new(
+				BackgroundTransparency =
 					1,
-					0,
-					0,
-					0
-				),
 
 
-			AutomaticSize =
-				Enum.AutomaticSize.Y,
+				Size =
+					UDim2.new(
+						1,
+						0,
+						0,
+						0
+					),
 
 
-			LayoutOrder =
-				#self.Parent:GetChildren()
-
-		},
-
-		{
+				AutomaticSize =
+					Enum.AutomaticSize.Y,
 
 
-			Utils.Create(
-				"UIListLayout",
-				{
+				LayoutOrder =
+					#self.Parent:GetChildren()
 
-					Padding =
-						UDim.new(
-							0,
-							6
-						),
+			},
+
+			{
+
+				Utils.Create(
+					"UIListLayout",
+					{
+
+						Padding =
+							UDim.new(
+								0,
+								6
+							),
 
 
-					SortOrder =
-						Enum.SortOrder.LayoutOrder
+						SortOrder =
+							Enum.SortOrder.LayoutOrder
 
-				}
-			)
+					}
+				)
 
-		}
-
-	)
+			}
+		)
 
 
 
@@ -140,58 +170,66 @@ function Section:_Create()
 
 
 
-	-- ============================
+
+
+
+	-- ========================================================
 	-- TITLE
-	-- ============================
+	-- ========================================================
 
 
-	local title = Utils.Create(
-		"TextLabel",
-		{
+	local title =
+		Utils.Create(
+			"TextLabel",
+			{
 
-			Name = "SectionTitle",
-
-
-			Text =
-				self.Title,
+				Name =
+					"SectionTitle",
 
 
-			BackgroundTransparency = 1,
+				Text =
+					self.Title,
 
 
-			Size =
-				UDim2.new(
+				BackgroundTransparency =
 					1,
-					0,
-					0,
-					24
-				),
 
 
-			TextColor3 =
-				Color3.fromRGB(
-					255,
-					255,
-					255
-				),
+				Size =
+					UDim2.new(
+						1,
+						0,
+						0,
+						24
+					),
 
 
-			TextSize = 15,
+				TextColor3 =
+					Color3.fromRGB(
+						255,
+						255,
+						255
+					),
 
 
-			Font =
-				Enum.Font.GothamBold,
+				TextSize =
+					15,
 
 
-			TextXAlignment =
-				Enum.TextXAlignment.Left,
+				Font =
+					Enum.Font.GothamBold,
 
 
-			LayoutOrder = 1
+				TextXAlignment =
+					Enum.TextXAlignment.Left,
 
-		}
 
-	)
+				LayoutOrder =
+					1
+
+			}
+		)
+
 
 
 
@@ -206,60 +244,67 @@ function Section:_Create()
 
 
 
-	-- ============================
+
+
+
+	-- ========================================================
 	-- CONTENT HOLDER
-	-- ============================
+	-- ========================================================
 
 
-	local content = Utils.Create(
-		"Frame",
-		{
+	local content =
+		Utils.Create(
+			"Frame",
+			{
 
-			Name = "Content",
+				Name =
+					"Content",
 
 
-			BackgroundTransparency = 1,
-
-
-			Size =
-				UDim2.new(
+				BackgroundTransparency =
 					1,
-					0,
-					0,
-					0
-				),
 
 
-			AutomaticSize =
-				Enum.AutomaticSize.Y,
+				Size =
+					UDim2.new(
+						1,
+						0,
+						0,
+						0
+					),
 
 
-			LayoutOrder = 2
-
-		},
-
-		{
+				AutomaticSize =
+					Enum.AutomaticSize.Y,
 
 
-			Utils.Create(
-				"UIListLayout",
-				{
+				LayoutOrder =
+					2
 
-					Padding =
-						UDim.new(
-							0,
-							6
-						),
+			},
 
-					SortOrder =
-						Enum.SortOrder.LayoutOrder
+			{
 
-				}
-			)
+				Utils.Create(
+					"UIListLayout",
+					{
 
-		}
+						Padding =
+							UDim.new(
+								0,
+								6
+							),
 
-	)
+
+						SortOrder =
+							Enum.SortOrder.LayoutOrder
+
+					}
+				)
+
+			}
+		)
+
 
 
 
@@ -279,24 +324,33 @@ end
 
 
 
+
+
 -- ============================================================
 -- METHODS
 -- ============================================================
 
-
 function Section:SetTitle(text)
 
 
-	self.Title = text
+
+	self.Title =
+		text
+
 
 
 	if self.TitleLabel then
 
-		self.TitleLabel.Text = text
+		self.TitleLabel.Text =
+			text
 
 	end
 
+
+
 end
+
+
 
 
 
@@ -304,8 +358,14 @@ end
 function Section:SetVisible(state)
 
 
-	self.Container.Visible =
-		state
+
+	if self.Container then
+
+		self.Container.Visible =
+			state
+
+	end
+
 
 
 end
@@ -313,7 +373,10 @@ end
 
 
 
+
+
 function Section:Add(widget)
+
 
 
 	if widget.Instance then
@@ -324,12 +387,16 @@ function Section:Add(widget)
 	end
 
 
+
 end
 
 
 
 
+
+
 function Section:Destroy()
+
 
 
 	if self.Container then
@@ -339,10 +406,15 @@ function Section:Destroy()
 	end
 
 
-	self.Container = nil
+
+	self.Container =
+		nil
+
 
 
 end
+
+
 
 
 
