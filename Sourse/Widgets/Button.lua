@@ -2,11 +2,7 @@
 -- CORNUI BUTTON WIDGET
 -- ============================================================
 
-
 local Button = {}
-
-local Utils =
-	require(script.Parent.Parent.Core.Utils)
 
 
 local ThemeManager =
@@ -14,58 +10,110 @@ local ThemeManager =
 
 
 
-function Button:Create(Tab, config)
+function Button.new(Tab, config)
 
 
 	config = config or {}
 
 
+
 	local button = {
+
 
 		Type = "Button",
 
-		Name = config.Name or "Button",
 
-		Callback = config.Callback or function(){end},
+		Name =
+			config.Name or "Button",
+
+
+		Callback =
+			config.Callback or function()
+			end,
+
 
 		Tab = Tab,
+
 
 	}
 
 
+
 	table.insert(
-		Tab.Widgets,
+		Tab.Elements,
 		button
 	)
 
 
 
-	-- UI creation will move here later
+	-- Create UI
 
-	local instance = Instance.new("TextButton")
-
-
-	instance.Name =
-		button.Name
-
-
-	instance.Text =
-		button.Name
+	local instance =
+		Tab.Window._create(
+			"TextButton",
+			{
 
 
-	instance.BackgroundColor3 =
-		ThemeManager:GetColor("Element")
+				Name =
+					button.Name,
+
+
+				Size =
+					UDim2.new(
+						1,
+						0,
+						0,
+						36
+					),
+
+
+				BackgroundColor3 =
+					ThemeManager:GetColor(
+						"Element"
+					),
+
+
+				Text =
+					button.Name,
+
+
+				TextColor3 =
+					ThemeManager:GetColor(
+						"Text"
+					),
+
+
+				Font =
+					ThemeManager:GetFont(
+						"Main"
+					),
+
+
+				TextSize = 14,
+
+
+				BorderSizePixel = 0,
+
+
+			}
+		)
+
 
 
 	instance.Parent =
-		Tab.Container
+		Tab.Page
+
+
+
+	button.Instance =
+		instance
 
 
 
 	instance.MouseButton1Click:Connect(function()
 
 
-		local success,err =
+		local success, err =
 			pcall(
 				button.Callback
 			)
@@ -85,8 +133,41 @@ function Button:Create(Tab, config)
 
 
 
-	button.Instance =
-		instance
+	-- Theme auto update
+
+	ThemeManager:RegisterWidget(
+		button,
+		function(widget)
+
+			if widget.Instance then
+
+				widget.Instance.BackgroundColor3 =
+					ThemeManager:GetColor(
+						"Element"
+					)
+
+
+				widget.Instance.TextColor3 =
+					ThemeManager:GetColor(
+						"Text"
+					)
+
+
+				widget.Instance.Font =
+					ThemeManager:GetFont(
+						"Main"
+					)
+
+			end
+
+		end
+	)
+
+
+
+	Tab.Window:RegisterWidget(
+		button
+	)
 
 
 
