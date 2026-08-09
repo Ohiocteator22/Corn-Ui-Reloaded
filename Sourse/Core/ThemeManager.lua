@@ -275,7 +275,79 @@ end
 -- ============================================================
 
 ThemeManager:Load("Dark")
+-- ============================================================
+-- BACKWARD COMPATIBILITY THEME PROXY
+-- ============================================================
 
+local ThemeProxy = {}
+
+setmetatable(ThemeProxy, {
+
+	__index = function(_, key)
+
+		local theme =
+			ThemeManager._currentTheme
+
+
+		if not theme then
+			return nil
+		end
+
+
+
+		-- New format
+		if theme.Colors
+		and theme.Colors[key] ~= nil then
+
+			return theme.Colors[key]
+
+		end
+
+
+
+		-- Old format fallback
+		if theme[key] ~= nil then
+
+			return theme[key]
+
+		end
+
+
+
+		-- Dark fallback
+
+		local dark =
+			Themes.Dark
+
+
+		if dark then
+
+			if dark.Colors
+			and dark.Colors[key] ~= nil then
+
+				return dark.Colors[key]
+
+			end
+
+
+			if dark[key] ~= nil then
+
+				return dark[key]
+
+			end
+
+		end
+
+
+		return nil
+
+	end
+
+})
+
+
+ThemeManager.Theme =
+	ThemeProxy
 
 
 return ThemeManager
