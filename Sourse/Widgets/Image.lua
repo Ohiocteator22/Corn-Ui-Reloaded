@@ -2,15 +2,8 @@
 -- CORNUI IMAGE WIDGET
 -- ============================================================
 
-
-local Utils = require(
-	script.Parent.Parent.Core.Utils
-)
-
-local State = require(
-	script.Parent.Parent.Core.State
-)
-
+local Utils =
+	require(script.Parent.Parent.Core.Utils)
 
 
 local Image = {}
@@ -20,13 +13,16 @@ Image.__index = Image
 
 
 
+
 -- ============================================================
 -- CREATE
 -- ============================================================
 
-function Image.new(parent, config)
+function Image.new(Tab, config)
+
 
 	config = config or {}
+
 
 
 	local self =
@@ -34,13 +30,26 @@ function Image.new(parent, config)
 
 
 
-	self.Parent = parent
+	self.Type =
+		"Image"
+
+
+
+	self.Tab =
+		Tab
+
+
+
+	self.Parent =
+		Tab.Page
+
 
 
 	self.Image =
 		config.Image
 		or config.ImageId
 		or ""
+
 
 
 	self.Size =
@@ -53,14 +62,17 @@ function Image.new(parent, config)
 		)
 
 
+
 	self.Transparency =
 		config.Transparency
 		or 0
 
 
+
 	self.Rotation =
 		config.Rotation
 		or 0
+
 
 
 	self.CornerRadius =
@@ -69,7 +81,22 @@ function Image.new(parent, config)
 
 
 
+
+
 	self:_Create()
+
+
+
+	table.insert(
+		Tab.Elements,
+		self
+	)
+
+
+
+	Tab.Window:RegisterWidget(
+		self
+	)
 
 
 
@@ -88,29 +115,29 @@ end
 function Image:_Create()
 
 
-	State:RegisterWidget(self)
+
+	local holder =
+		Utils.Create(
+			"Frame",
+			{
+
+				Name =
+					"ImageHolder",
 
 
-
-	local holder = Utils.Create(
-		"Frame",
-		{
-
-			Name = "ImageHolder",
+				BackgroundTransparency =
+					1,
 
 
-			BackgroundTransparency = 1,
+				Size =
+					self.Size,
 
 
-			Size = self.Size,
+				LayoutOrder =
+					#self.Parent:GetChildren()
 
-
-			LayoutOrder =
-				#self.Parent:GetChildren()
-
-		}
-
-	)
+			}
+		)
 
 
 
@@ -126,51 +153,47 @@ function Image:_Create()
 
 
 
-	local image = Utils.Create(
-		"ImageLabel",
-		{
+	local image =
+		Utils.Create(
+			"ImageLabel",
+			{
 
-			Name = "Image",
-
-
-			Image =
-				self.Image,
+				Name =
+					"Image",
 
 
-			BackgroundTransparency = 1,
+				Image =
+					self.Image,
 
 
-			Size =
-				UDim2.fromScale(
+				BackgroundTransparency =
 					1,
-					1
-				),
 
 
-			Position =
-				UDim2.fromScale(
+				Size =
+					UDim2.fromScale(
+						1,
+						1
+					),
+
+
+				ImageTransparency =
+					self.Transparency,
+
+
+				Rotation =
+					self.Rotation,
+
+
+				ScaleType =
+					Enum.ScaleType.Stretch,
+
+
+				BorderSizePixel =
 					0,
-					0
-				),
 
-
-			ImageTransparency =
-				self.Transparency,
-
-
-			Rotation =
-				self.Rotation,
-
-
-			ScaleType =
-				Enum.ScaleType.Stretch,
-
-
-			BorderSizePixel = 0
-
-		}
-
-	)
+			}
+		)
 
 
 
@@ -185,7 +208,6 @@ function Image:_Create()
 
 
 
-	-- Optional rounded image
 
 	if self.CornerRadius > 0 then
 
@@ -202,12 +224,13 @@ function Image:_Create()
 						)
 
 				}
-
 			)
+
 
 
 		corner.Parent =
 			image
+
 
 
 		self.Corner =
@@ -228,12 +251,12 @@ end
 -- METHODS
 -- ============================================================
 
-
 function Image:SetImage(id)
 
 
 	self.Image =
 		id
+
 
 
 	if self.ImageObject then
@@ -257,6 +280,7 @@ function Image:SetSize(size)
 		size
 
 
+
 	if self.Instance then
 
 		self.Instance.Size =
@@ -276,6 +300,7 @@ function Image:SetTransparency(value)
 
 	self.Transparency =
 		value
+
 
 
 	if self.ImageObject then
@@ -299,6 +324,7 @@ function Image:SetRotation(value)
 		value
 
 
+
 	if self.ImageObject then
 
 		self.ImageObject.Rotation =
@@ -318,6 +344,7 @@ function Image:SetCornerRadius(value)
 
 	self.CornerRadius =
 		value
+
 
 
 	if self.Corner then
@@ -347,7 +374,9 @@ function Image:Destroy()
 	end
 
 
-	self.Instance = nil
+
+	self.Instance =
+		nil
 
 
 end
