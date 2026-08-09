@@ -3,13 +3,12 @@
 -- ============================================================
 
 
-local Utils = require(
-	script.Parent.Parent.Core.Utils
-)
+local Utils =
+	require(script.Parent.Parent.Core.Utils)
 
-local State = require(
-	script.Parent.Parent.Core.State
-)
+
+local ThemeManager =
+	require(script.Parent.Parent.Core.ThemeManager)
 
 
 
@@ -20,13 +19,18 @@ Paragraph.__index = Paragraph
 
 
 
+
+
 -- ============================================================
 -- CREATE
 -- ============================================================
 
-function Paragraph.new(parent, config)
+function Paragraph.new(Tab, config)
 
-	config = config or {}
+
+	config =
+		config or {}
+
 
 
 	local self =
@@ -34,11 +38,24 @@ function Paragraph.new(parent, config)
 
 
 
-	self.Parent = parent
+	self.Type =
+		"Paragraph"
+
+
+
+	self.Tab =
+		Tab
+
+
+
+	self.Parent =
+		Tab.Page
+
 
 
 	self.Title =
 		config.Title
+
 
 
 	self.Text =
@@ -54,13 +71,30 @@ function Paragraph.new(parent, config)
 
 
 
+
+
 	self:_Create()
+
+
+
+	table.insert(
+		Tab.Elements,
+		self
+	)
+
+
+
+	Tab.Window:RegisterWidget(
+		self
+	)
 
 
 
 	return self
 
 end
+
+
 
 
 
@@ -73,60 +107,61 @@ end
 function Paragraph:_Create()
 
 
-	State:RegisterWidget(self)
+
+	local holder =
+		Utils.Create(
+			"Frame",
+			{
+
+				Name =
+					"Paragraph",
 
 
-
-	local holder = Utils.Create(
-		"Frame",
-		{
-
-			Name = "Paragraph",
-
-
-			BackgroundTransparency = 1,
-
-
-			Size =
-				UDim2.new(
+				BackgroundTransparency =
 					1,
-					0,
-					0,
-					0
-				),
 
 
-			AutomaticSize =
-				Enum.AutomaticSize.Y,
+				Size =
+					UDim2.new(
+						1,
+						0,
+						0,
+						0
+					),
 
 
-			LayoutOrder =
-				#self.Parent:GetChildren()
-
-		},
-
-		{
-
-			Utils.Create(
-				"UIListLayout",
-				{
-
-					Padding =
-						UDim.new(
-							0,
-							4
-						),
+				AutomaticSize =
+					Enum.AutomaticSize.Y,
 
 
-					SortOrder =
-						Enum.SortOrder.LayoutOrder
+				LayoutOrder =
+					#self.Parent:GetChildren()
 
-				}
-			)
+			},
 
-		}
+			{
 
-	)
+				Utils.Create(
+					"UIListLayout",
+					{
+
+						Padding =
+							UDim.new(
+								0,
+								4
+							),
+
+
+						SortOrder =
+							Enum.SortOrder.LayoutOrder
+
+					}
+				)
+
+			}
+		)
+
+
 
 
 
@@ -142,6 +177,8 @@ function Paragraph:_Create()
 
 
 
+
+
 	-- ========================================================
 	-- TITLE
 	-- ========================================================
@@ -150,53 +187,58 @@ function Paragraph:_Create()
 	if self.Title then
 
 
-		local title = Utils.Create(
-			"TextLabel",
-			{
+		local title =
+			Utils.Create(
+				"TextLabel",
+				{
 
-				Name = "Title",
-
-
-				Text =
-					self.Title,
+					Name =
+						"Title",
 
 
-				BackgroundTransparency = 1,
+					Text =
+						self.Title,
 
 
-				Size =
-					UDim2.new(
+					BackgroundTransparency =
 						1,
-						0,
-						0,
-						22
-					),
 
 
-				TextColor3 =
-					Color3.fromRGB(
-						255,
-						255,
-						255
-					),
+					Size =
+						UDim2.new(
+							1,
+							0,
+							0,
+							22
+						),
 
 
-				TextSize = 15,
+					TextColor3 =
+						ThemeManager:GetColor(
+							"Text"
+						),
 
 
-				Font =
-					Enum.Font.GothamBold,
+					TextSize =
+						15,
 
 
-				TextXAlignment =
-					Enum.TextXAlignment.Left,
+					Font =
+						ThemeManager:GetFont(
+							"Bold"
+						),
 
 
-				LayoutOrder = 1
+					TextXAlignment =
+						Enum.TextXAlignment.Left,
 
-			}
 
-		)
+					LayoutOrder =
+						1
+
+				}
+			)
+
 
 
 
@@ -215,71 +257,82 @@ function Paragraph:_Create()
 
 
 
+
+
 	-- ========================================================
 	-- CONTENT
 	-- ========================================================
 
 
-	local content = Utils.Create(
-		"TextLabel",
-		{
+	local content =
+		Utils.Create(
+			"TextLabel",
+			{
 
-			Name = "Content",
-
-
-			Text =
-				self.Text,
+				Name =
+					"Content",
 
 
-			BackgroundTransparency = 1,
+				Text =
+					self.Text,
 
 
-			Size =
-				UDim2.new(
+				BackgroundTransparency =
 					1,
-					0,
-					0,
-					0
-				),
 
 
-			AutomaticSize =
-				Enum.AutomaticSize.Y,
+				Size =
+					UDim2.new(
+						1,
+						0,
+						0,
+						0
+					),
 
 
-			TextWrapped = true,
+				AutomaticSize =
+					Enum.AutomaticSize.Y,
 
 
-			TextYAlignment =
-				Enum.TextYAlignment.Top,
+				TextWrapped =
+					true,
 
 
-			TextXAlignment =
-				Enum.TextXAlignment.Left,
+				TextYAlignment =
+					Enum.TextYAlignment.Top,
 
 
-			TextColor3 =
-				Color3.fromRGB(
-					180,
-					180,
-					185
-				),
+				TextXAlignment =
+					Enum.TextXAlignment.Left,
 
 
-			TextSize =
-				self.TextSize,
+
+				TextColor3 =
+					ThemeManager:GetColor(
+						"SubText"
+					),
 
 
-			Font =
-				Enum.Font.Gotham,
+
+				TextSize =
+					self.TextSize,
 
 
-			LayoutOrder =
-				2
 
-		}
+				Font =
+					ThemeManager:GetFont(
+						"Main"
+					),
 
-	)
+
+
+				LayoutOrder =
+					2
+
+			}
+		)
+
+
 
 
 
@@ -292,8 +345,9 @@ function Paragraph:_Create()
 		content
 
 
-
 end
+
+
 
 
 
@@ -303,21 +357,24 @@ end
 -- METHODS
 -- ============================================================
 
-
 function Paragraph:SetText(text)
 
 
-	self.Text = text
+	self.Text =
+		text
+
 
 
 	if self.ContentLabel then
 
-		self.ContentLabel.Text = text
+		self.ContentLabel.Text =
+			text
 
 	end
 
 
 end
+
 
 
 
@@ -326,17 +383,21 @@ end
 function Paragraph:SetTitle(text)
 
 
-	self.Title = text
+	self.Title =
+		text
+
 
 
 	if self.TitleLabel then
 
-		self.TitleLabel.Text = text
+		self.TitleLabel.Text =
+			text
 
 	end
 
 
 end
+
 
 
 
@@ -345,17 +406,21 @@ end
 function Paragraph:SetTextSize(size)
 
 
-	self.TextSize = size
+	self.TextSize =
+		size
+
 
 
 	if self.ContentLabel then
 
-		self.ContentLabel.TextSize = size
+		self.ContentLabel.TextSize =
+			size
 
 	end
 
 
 end
+
 
 
 
@@ -366,12 +431,14 @@ function Paragraph:SetColor(color)
 
 	if self.ContentLabel then
 
-		self.ContentLabel.TextColor3 = color
+		self.ContentLabel.TextColor3 =
+			color
 
 	end
 
 
 end
+
 
 
 
@@ -387,7 +454,9 @@ function Paragraph:Destroy()
 	end
 
 
-	self.Instance = nil
+
+	self.Instance =
+		nil
 
 
 end
