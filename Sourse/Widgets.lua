@@ -7,44 +7,58 @@ local Widgets = {}
 local Folder = script.Parent.Widgets
 
 
+local function LoadWidget(name)
+
+	local module = Folder:FindFirstChild(name)
+
+	if not module then
+		warn("[CornUi] Missing widget module:", name)
+		return nil
+	end
+
+	return require(module)
+
+end
+
+
 Widgets.Button =
-	require(Folder.Button)
+	LoadWidget("Button")
 
 Widgets.Toggle =
-	require(Folder.Toggle)
+	LoadWidget("Toggle")
 
 Widgets.Slider =
-	require(Folder.Slider)
+	LoadWidget("Slider")
 
 Widgets.Dropdown =
-	require(Folder.Dropdown)
+	LoadWidget("Dropdown")
 
 Widgets.ColorPicker =
-	require(Folder.ColorPicker)
+	LoadWidget("ColorPicker")
 
 Widgets.Keybind =
-	require(Folder.Keybind)
+	LoadWidget("Keybind")
 
 Widgets.Label =
-	require(Folder.Label)
+	LoadWidget("Label")
 
 Widgets.Section =
-	require(Folder.Section)
+	LoadWidget("Section")
 
 Widgets.Divider =
-	require(Folder.Divider)
+	LoadWidget("Divider")
 
 Widgets.Paragraph =
-	require(Folder.Paragraph)
+	LoadWidget("Paragraph")
 
 Widgets.Image =
-	require(Folder.Image)
+	LoadWidget("Image")
 
 Widgets.ProgressBar =
-	require(Folder.ProgressBar)
+	LoadWidget("ProgressBar")
 
 Widgets.Notification =
-	require(Folder.Notification)
+	LoadWidget("Notification")
 
 
 return Widgets
