@@ -1,0 +1,106 @@
+# ============================================================
+# CornUi Project Rules
+# Cline AI Development Context
+# ============================================================
+
+
+# PROJECT IDENTITY
+
+Project Name:
+CornUi
+
+Type:
+Roblox Luau UI Library
+
+Current Version:
+2.0.0
+
+Previous Stable Version:
+1.9.3
+
+Developer:
+Ohiocteator22
+
+Purpose:
+A modular, mobile-first Roblox UI framework designed for
+loadstring execution, exploit environments, and normal Roblox
+ModuleScript usage.
+
+CornUi is inspired by:
+- Orion UI
+- Fluent UI
+- Modern Roblox UI libraries
+
+However, CornUi is its own independent framework.
+
+
+# ============================================================
+# CORE ARCHITECTURE
+# ============================================================
+
+
+Main source directory:
+
+Source/
+
+
+Structure:
+
+
+Source/
+│
+├── init.lua
+│
+├── Core/
+│   │
+│   ├── Library.lua
+│   ├── Config.lua
+│   ├── ThemeManager.lua
+│   ├── Services.lua
+│   ├── Utils.lua
+│   ├── State.lua
+│   └── Signal.lua
+│
+│
+├── Window/
+│   │
+│   ├── Window.lua
+│   ├── Tabs.lua
+│   └── Methods.lua
+│
+│
+└── Widgets/
+    │
+    ├── init.lua
+    │
+    ├── Button.lua
+    ├── Toggle.lua
+    ├── Slider.lua
+    ├── Dropdown.lua
+    ├── ColorPicker.lua
+    ├── Keybind.lua
+    ├── Label.lua
+    ├── Section.lua
+    ├── Divider.lua
+    ├── Paragraph.lua
+    ├── Image.lua
+    ├── ProgressBar.lua
+    └── Notification.lua
+
+
+
+# ============================================================
+# LOADING SYSTEM
+# ============================================================
+
+
+CornUi supports loadstring execution.
+
+Example:
+
+```lua
+local CornUi = loadstring(
+    game:HttpGet(
+        "URL"
+    )
+)()
