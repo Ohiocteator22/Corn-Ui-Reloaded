@@ -28,13 +28,14 @@ function Tabs.new(window)
 		local icon = config.Icon
 
 
-		local tab = {
+	local tab = {
 			Name = name,
 			Icon = icon,
 			Elements = {},
+			Widgets = {},
 			Window = window,
-		}
-
+			Container = nil,
+				}
 
 
 		-- Create tab button
@@ -73,23 +74,35 @@ function Tabs.new(window)
 
 		local page = window._create("ScrollingFrame", {
 
-			Name = name .. "_Page",
-
-			Size = UDim2.fromScale(
-				1,
-				1
-			),
-
-			BackgroundTransparency = 1,
-
-			Visible = false,
-
-			ScrollBarThickness = 3,
-
-		})
+				Name = name .. "_Page",
+			
+				Size = UDim2.fromScale(
+					1,
+					1
+				),
+			
+				BackgroundTransparency = 1,
+			
+				Visible = false,
+			
+				ScrollBarThickness = 3,
+			
+				AutomaticCanvasSize = Enum.AutomaticSize.Y,
+			
+				CanvasSize = UDim2.new(
+					0,
+					0,
+					0,
+					0
+				),
+			
+			})
 
 
 		page.Parent = window._pageHolder
+
+		
+		tab.Container = page
 
 
 
@@ -127,7 +140,15 @@ function Tabs.new(window)
 
 	end
 
-
+	local layout = window._create(
+	"UIListLayout",
+	{
+		Padding = UDim.new(0,6),
+		SortOrder = Enum.SortOrder.LayoutOrder
+	}
+)
+		
+		layout.Parent = page
 
 
 	-- ========================================================
