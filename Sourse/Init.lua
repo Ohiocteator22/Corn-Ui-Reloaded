@@ -2,32 +2,24 @@
 -- CORNUI WIDGET REGISTRY
 -- ============================================================
 
-local Widgets = {}
+local Library =
+	require(script.Core.Library)
 
 
-Widgets.Button =
-	require(script.Button)
+Library.Window =
+	require(script.Window.Window)
 
 
-Widgets.Toggle =
-	require(script.Toggle)
+Library.Widgets =
+	require(script.Widgets)
 
 
-Widgets.Slider =
-	require(script.Slider)
+Library.Config =
+	require(script.Core.Config)
 
 
-Widgets.Dropdown =
-	require(script.Dropdown)
+Library.ThemeManager =
+	require(script.Core.ThemeManager)
 
 
-Widgets.ColorPicker =
-	require(script.ColorPicker)
-
-
-Widgets.Keybind =
-	require(script.Keybind)
-
-
-
-return Widgets
+return Library
