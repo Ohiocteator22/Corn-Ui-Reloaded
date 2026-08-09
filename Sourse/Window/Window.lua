@@ -57,8 +57,11 @@ function Window.new(config)
 
 
 
-	self.Theme =
-		config.Theme or "Dark"
+	self.ThemeName =
+    config.Theme or "Dark"
+
+		self.Theme =
+		    ThemeManager
 
 
 
@@ -101,8 +104,8 @@ end
 function Window:Create()
 
 
-	ThemeManager:LoadTheme(
-		self.Theme
+		ThemeManager:LoadTheme(
+	    self.ThemeName
 	)
 
 
@@ -217,7 +220,13 @@ function Window:Create()
 
 	tabHolder.Parent =
 		main
-
+	self._create(
+	    "UIListLayout",
+	    {
+	      Padding = UDim.new(0,6),
+	      SortOrder = Enum.SortOrder.LayoutOrder
+	    }
+	).Parent = tabHolder
 
 
 	self._tabHolder =
