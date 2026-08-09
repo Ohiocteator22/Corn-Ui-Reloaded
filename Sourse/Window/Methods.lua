@@ -24,7 +24,9 @@ local Widgets =
 -- CREATE TAB
 -- ============================================================
 
-function Methods:CreateTab(window, name, config)
+function Methods:CreateTab(window, config)
+		return window.TabManager:CreateTab(config)  
+end
 
 
 	config = config or {}
