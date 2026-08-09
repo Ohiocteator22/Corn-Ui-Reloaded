@@ -3,52 +3,62 @@
 -- Handles Window creation and storage
 -- ============================================================
 
-
 local Window = {}
 Window.__index = Window
 
 
+local Services =
+	require(script.Parent.Parent.Core.Services)
 
--- Dependencies
+local Library =
+	require(script.Parent.Parent.Core.Library)
 
-local Services = require(script.Parent.Parent.Core.Services)
+local ThemeManager =
+	require(script.Parent.Parent.Core.ThemeManager)
 
-local Library = require(script.Parent.Parent.Core.Library)
+local Utils =
+	require(script.Parent.Parent.Core.Utils)
 
-local ThemeManager = require(script.Parent.Parent.Core.ThemeManager)
+local Signal =
+	require(script.Parent.Parent.Core.Signal)
 
-local Utils = require(script.Parent.Parent.Core.Utils)
+local Tabs =
+	require(script.Parent.Tabs)
 
-
-
-local Theme = ThemeManager.Theme
+local Methods =
+	require(script.Parent.Methods)
 
 
 
 -- ============================================================
--- CREATE NEW WINDOW
+-- CREATE WINDOW
 -- ============================================================
 
 function Window.new(config)
 
-
 	config = config or {}
 
 
+	local self =
+		setmetatable({}, Window)
 
-	local self = setmetatable({}, Window)
+
+
+	self.Name =
+		config.Name or "CornUi"
+
+
+	self.Subtitle =
+		config.Subtitle or ""
+
+
+	self.Icon =
+		config.Icon
 
 
 
-	-- Basic data
-
-	self.Name = config.Name or "CornUi"
-
-	self.Subtitle = config.Subtitle or ""
-
-	self.Icon = config.Icon
-
-	self.Theme = config.Theme or "Dark"
+	self.Theme =
+		config.Theme or "Dark"
 
 
 
@@ -56,16 +66,23 @@ function Window.new(config)
 
 	self.CurrentTab = nil
 
-
 	self.Widgets = {}
 
 	self.Notifications = {}
 
 	self.Commands = {}
 
-
-
 	self.Destroyed = false
+
+
+
+	self.Signals =
+		Signal.new()
+
+
+
+	self._create =
+		Utils.Create
 
 
 
@@ -78,30 +95,32 @@ end
 
 
 -- ============================================================
--- BUILD UI
+-- BUILD WINDOW UI
 -- ============================================================
 
 function Window:Create()
 
 
-	-- Apply theme
-
-	ThemeManager:Load(
+	ThemeManager:LoadTheme(
 		self.Theme
 	)
 
 
 
-	-- ScreenGui
-
-	local gui = Instance.new("ScreenGui")
-
-	gui.Name = self.Name
+	local gui =
+		Instance.new("ScreenGui")
 
 
-	gui.ResetOnSpawn = false
+	gui.Name =
+		self.Name
 
-	gui.IgnoreGuiInset = true
+
+	gui.ResetOnSpawn =
+		false
+
+
+	gui.IgnoreGuiInset =
+		true
 
 
 	gui.ZIndexBehavior =
@@ -114,61 +133,171 @@ function Window:Create()
 
 
 
-	self.Gui = gui
+	self.Gui =
+		gui
 
 
 
 
 
-	-- Main Window Frame
+	-- Main frame
 
+	local main =
+		self._create(
+			"Frame",
+			{
 
-	local main = Instance.new("Frame")
+				Name =
+					"MainWindow",
 
-	main.Name = "MainWindow"
+				Size =
+					UDim2.fromOffset(
+						600,
+						400
+					),
 
+				Position =
+					UDim2.fromScale(
+						0.5,
+						0.5
+					),
 
-	main.Size =
-		UDim2.fromOffset(
-			600,
-			400
+				AnchorPoint =
+					Vector2.new(
+						0.5,
+						0.5
+					),
+
+				BackgroundColor3 =
+					ThemeManager:GetColor(
+						"Background"
+					),
+
+				BorderSizePixel = 0,
+
+			}
 		)
 
 
-	main.Position =
-		UDim2.fromScale(
-			0.5,
-			0.5
+
+	main.Parent =
+		gui
+
+
+	self.Main =
+		main
+
+
+
+
+
+	-- Tab holder
+
+	local tabHolder =
+		self._create(
+			"Frame",
+			{
+
+				Name =
+					"TabHolder",
+
+				Size =
+					UDim2.new(
+						0,
+						150,
+						1,
+						0
+					),
+
+				BackgroundTransparency = 1,
+
+			}
 		)
 
 
-	main.AnchorPoint =
-		Vector2.new(
-			0.5,
-			0.5
+	tabHolder.Parent =
+		main
+
+
+
+	self._tabHolder =
+		tabHolder
+
+
+
+
+
+	-- Page holder
+
+	local pageHolder =
+		self._create(
+			"Frame",
+			{
+
+				Name =
+					"PageHolder",
+
+				Position =
+					UDim2.new(
+						0,
+						160,
+						0,
+						0
+					),
+
+				Size =
+					UDim2.new(
+						1,
+						-160,
+						1,
+						0
+					),
+
+				BackgroundTransparency = 1,
+
+			}
 		)
 
 
-	main.BackgroundColor3 =
-		Theme.Background
+	pageHolder.Parent =
+		main
 
 
 
-	main.BorderSizePixel = 0
-
-
-
-	main.Parent = gui
-
-
-
-	self.Main = main
+	self._pageHolder =
+		pageHolder
 
 
 
 
 
-	-- Store
+	-- Attach tab system
+
+	self.TabManager =
+		Tabs.new(self)
+
+
+
+
+
+	-- Attach methods
+
+	for name,func in pairs(Methods) do
+
+		self[name] = function(_, ...)
+
+			return func(
+				self,
+				...
+			)
+
+		end
+
+	end
+
+
+
+
 
 	Library:RegisterWindow(
 		self
@@ -185,11 +314,10 @@ end
 
 
 -- ============================================================
--- INTERNAL WIDGET REGISTRY
+-- WIDGET REGISTRY
 -- ============================================================
 
 function Window:RegisterWidget(widget)
-
 
 	table.insert(
 		self.Widgets,
@@ -200,28 +328,6 @@ function Window:RegisterWidget(widget)
 	Library:RegisterWidget(
 		widget
 	)
-
-end
-
-
-
-
-
--- ============================================================
--- INTERNAL TAB STORAGE
--- ============================================================
-
-function Window:RegisterTab(tab)
-
-
-	table.insert(
-		self.Tabs,
-		tab
-	)
-
-
-	self.CurrentTab = tab
-
 
 end
 
@@ -268,12 +374,7 @@ function Window:Destroy()
 		self.Widgets
 	)
 
-
-
 end
-
-
-
 
 
 return Window
