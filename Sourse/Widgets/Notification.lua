@@ -2,22 +2,19 @@
 -- CORNUI NOTIFICATION WIDGET
 -- ============================================================
 
-local Services = require(
-	script.Parent.Parent.Core.Services
-)
+local Services =
+	require(script.Parent.Parent.Core.Services)
 
-local Utils = require(
-	script.Parent.Parent.Core.Utils
-)
 
-local State = require(
-	script.Parent.Parent.Core.State
-)
+local Utils =
+	require(script.Parent.Parent.Core.Utils)
 
 
 local Notification = {}
 
 Notification.__index = Notification
+
+
 
 
 
@@ -27,15 +24,36 @@ Notification.__index = Notification
 
 local TypeColors = {
 
-	success = Color3.fromRGB(70,200,110),
+	success =
+		Color3.fromRGB(
+			70,
+			200,
+			110
+		),
 
-	error = Color3.fromRGB(230,75,75),
+	error =
+		Color3.fromRGB(
+			230,
+			75,
+			75
+		),
 
-	warning = Color3.fromRGB(255,175,45),
+	warning =
+		Color3.fromRGB(
+			255,
+			175,
+			45
+		),
 
-	info = Color3.fromRGB(80,170,255)
+	info =
+		Color3.fromRGB(
+			80,
+			170,
+			255
+		),
 
 }
+
 
 
 local TypeIcons = {
@@ -46,9 +64,13 @@ local TypeIcons = {
 
 	warning = "!",
 
-	info = "i"
+	info = "i",
 
 }
+
+
+
+
 
 
 
@@ -58,35 +80,48 @@ local TypeIcons = {
 
 function Notification.new(window, config)
 
-	config = config or {}
+
+	config =
+		config or {}
 
 
-	local self = setmetatable({}, Notification)
+
+	local self =
+		setmetatable({}, Notification)
 
 
 
-	self.Window = window
+	self.Window =
+		window
+
+
 
 	self.Title =
-		config.Title or "Notification"
+		config.Title
+		or "Notification"
+
 
 
 	self.Content =
-		config.Content or ""
+		config.Content
+		or ""
+
 
 
 	self.Duration =
-		config.Duration or 4
+		config.Duration
+		or 4
+
 
 
 	self.Type =
-		config.Type or "info"
+		config.Type
+		or "info"
 
 
 
 	self.Color =
 		TypeColors[self.Type]
-
 		or Color3.fromRGB(
 			255,
 			255,
@@ -97,6 +132,9 @@ function Notification.new(window, config)
 
 	self.Icon =
 		TypeIcons[self.Type]
+		or "i"
+
+
 
 
 
@@ -111,6 +149,7 @@ end
 
 
 
+
 -- ============================================================
 -- BUILD UI
 -- ============================================================
@@ -118,95 +157,143 @@ end
 function Notification:_Create()
 
 
-	local window = self.Window
 
-
-	State.NotificationCount += 1
-
-
-
-	local frame = Utils.Create(
-		"Frame",
-		{
-
-			Name = "Notification",
-
-			Size = UDim2.new(
-				0,
-				window._touch and 300 or 360,
-				0,
-				70
-			),
-
-
-			BackgroundColor3 =
-				window.Theme.Header,
-
-
-			BackgroundTransparency = 1,
-
-
-			LayoutOrder =
-				State.NotificationCount,
-
-
-			ZIndex = 200,
-
-
-			ClipsDescendants = true
-
-		},
-
-		{
-
-			Utils.Corner(12),
-
-			Utils.Stroke(
-				self.Color,
-				1
-			),
-
-
-			Utils.Create(
-				"UIPadding",
-				{
-
-					PaddingTop =
-						UDim.new(0,10),
-
-					PaddingBottom =
-						UDim.new(0,10),
-
-					PaddingLeft =
-						UDim.new(0,12),
-
-					PaddingRight =
-						UDim.new(0,12)
-
-				}
-			),
-
-
-			Utils.Create(
-				"UIListLayout",
-				{
-
-					Padding =
-						UDim.new(0,4),
-
-					SortOrder =
-						Enum.SortOrder.LayoutOrder
-
-				}
-			)
-
-		}
-
-	)
+	local window =
+		self.Window
 
 
 
-	self.Frame = frame
+
+
+	window.NotificationCount =
+		(window.NotificationCount or 0)
+		+
+		1
+
+
+
+
+
+	local frame =
+		Utils.Create(
+			"Frame",
+			{
+
+				Name =
+					"Notification",
+
+
+				Size =
+					UDim2.new(
+						0,
+						window._touch and 300 or 360,
+						0,
+						70
+					),
+
+
+				BackgroundColor3 =
+					window.Theme.Header
+					or
+					Color3.fromRGB(
+						35,
+						35,
+						40
+					),
+
+
+				BackgroundTransparency =
+					1,
+
+
+				LayoutOrder =
+					window.NotificationCount,
+
+
+				ZIndex =
+					200,
+
+
+				ClipsDescendants =
+					true,
+
+
+			},
+
+			{
+
+				Utils.Corner(12),
+
+
+				Utils.Stroke(
+					self.Color,
+					1
+				),
+
+
+				Utils.Create(
+					"UIPadding",
+					{
+
+						PaddingTop =
+							UDim.new(
+								0,
+								10
+							),
+
+
+						PaddingBottom =
+							UDim.new(
+								0,
+								10
+							),
+
+
+						PaddingLeft =
+							UDim.new(
+								0,
+								12
+							),
+
+
+						PaddingRight =
+							UDim.new(
+								0,
+								12
+							),
+
+					}
+				),
+
+
+				Utils.Create(
+					"UIListLayout",
+					{
+
+						Padding =
+							UDim.new(
+								0,
+								4
+							),
+
+
+						SortOrder =
+							Enum.SortOrder.LayoutOrder
+
+					}
+				)
+
+			}
+		)
+
+
+
+
+
+	self.Frame =
+		frame
+
+
 
 
 
@@ -216,193 +303,205 @@ function Notification:_Create()
 
 
 
-	-- ==============================
-	-- TITLE
-	-- ==============================
+
+	local title =
+		Utils.Create(
+			"TextLabel",
+			{
+
+				Text =
+					self.Icon
+					..
+					"  "
+					..
+					self.Title,
 
 
-	local title = Utils.Create(
-		"TextLabel",
-		{
-
-			Text =
-				self.Icon .. "  " .. self.Title,
+				Font =
+					Enum.Font.GothamBold,
 
 
-			Font =
-				Enum.Font.GothamBold,
+				TextSize =
+					window._touch and 16 or 14,
 
 
-			TextSize =
-				window._touch and 16 or 14,
+				TextColor3 =
+					Color3.fromRGB(
+						255,
+						255,
+						255
+					),
 
 
-			TextColor3 =
-				Color3.fromRGB(
-					255,
-					255,
-					255
-				),
-
-
-			BackgroundTransparency = 1,
-
-
-			Size =
-				UDim2.new(
+				BackgroundTransparency =
 					1,
-					0,
-					0,
-					22
-				),
 
 
-			TextXAlignment =
-				Enum.TextXAlignment.Left,
+				Size =
+					UDim2.new(
+						1,
+						0,
+						0,
+						22
+					),
 
 
-			TextTransparency = 1,
+				TextXAlignment =
+					Enum.TextXAlignment.Left,
 
 
-			LayoutOrder = 1
-
-		}
-	)
-
-
-	title.Parent = frame
-
-
-
-	self.TitleLabel = title
-
-
-
-
-	-- ==============================
-	-- CONTENT
-	-- ==============================
-
-
-	local content = Utils.Create(
-		"TextLabel",
-		{
-
-			Text =
-				self.Content,
-
-
-			Font =
-				Enum.Font.Gotham,
-
-
-			TextSize =
-				window._touch and 14 or 12,
-
-
-			TextColor3 =
-				Color3.fromRGB(
-					180,
-					180,
-					180
-				),
-
-
-			BackgroundTransparency = 1,
-
-
-			AutomaticSize =
-				Enum.AutomaticSize.Y,
-
-
-			Size =
-				UDim2.new(
+				TextTransparency =
 					1,
-					0,
-					0,
-					0
-				),
 
 
-			TextWrapped = true,
+				LayoutOrder =
+					1
 
-
-			TextXAlignment =
-				Enum.TextXAlignment.Left,
-
-
-			TextTransparency = 1,
-
-
-			LayoutOrder = 2
-
-		}
-	)
+			}
+		)
 
 
 
-	content.Parent = frame
+	title.Parent =
+		frame
 
 
 
-	self.ContentLabel = content
+	self.TitleLabel =
+		title
 
 
 
 
-	-- ==============================
-	-- PROGRESS BAR
-	-- ==============================
+
+	local content =
+		Utils.Create(
+			"TextLabel",
+			{
+
+				Text =
+					self.Content,
 
 
-	local bar = Utils.Create(
-		"Frame",
-		{
+				Font =
+					Enum.Font.Gotham,
 
-			Size =
-				UDim2.new(
+
+				TextSize =
+					window._touch and 14 or 12,
+
+
+				TextColor3 =
+					Color3.fromRGB(
+						180,
+						180,
+						180
+					),
+
+
+				BackgroundTransparency =
 					1,
-					0,
-					0,
+
+
+				AutomaticSize =
+					Enum.AutomaticSize.Y,
+
+
+				Size =
+					UDim2.new(
+						1,
+						0,
+						0,
+						0
+					),
+
+
+				TextWrapped =
+					true,
+
+
+				TextXAlignment =
+					Enum.TextXAlignment.Left,
+
+
+				TextTransparency =
+					1,
+
+
+				LayoutOrder =
+					2
+
+			}
+		)
+
+
+
+	content.Parent =
+		frame
+
+
+
+	self.ContentLabel =
+		content
+
+
+
+
+
+	local bar =
+		Utils.Create(
+			"Frame",
+			{
+
+				Size =
+					UDim2.new(
+						1,
+						0,
+						0,
+						3
+					),
+
+
+				BackgroundColor3 =
+					self.Color,
+
+
+				BackgroundTransparency =
+					1,
+
+
+				LayoutOrder =
 					3
-				),
 
+			},
 
-			BackgroundColor3 =
-				self.Color,
+			{
 
+				Utils.Corner(2)
 
-			BackgroundTransparency = 1,
-
-
-			LayoutOrder = 3
-
-		},
-
-		{
-
-			Utils.Corner(2)
-
-		}
-
-	)
+			}
+		)
 
 
 
-	bar.Parent = frame
+	bar.Parent =
+		frame
 
 
 
-	self.Bar = bar
+	self.Bar =
+		bar
+
 
 
 
 
 	self:_Animate()
 
-
-
 end
+
+
+
 
 
 
@@ -412,10 +511,6 @@ end
 -- ============================================================
 
 function Notification:_Animate()
-
-
-	local TweenService =
-		Services.TweenService
 
 
 
@@ -460,6 +555,7 @@ function Notification:_Animate()
 
 
 
+
 	task.delay(
 		self.Duration,
 		function()
@@ -469,9 +565,8 @@ function Notification:_Animate()
 		end
 	)
 
-
-
 end
+
 
 
 
@@ -483,9 +578,12 @@ end
 function Notification:Destroy()
 
 
+
 	if not self.Frame then
 		return
 	end
+
+
 
 
 
@@ -499,9 +597,12 @@ function Notification:Destroy()
 
 
 
+
+
 	task.delay(
 		0.3,
 		function()
+
 
 			if self.Frame then
 
@@ -509,11 +610,14 @@ function Notification:Destroy()
 
 			end
 
+
 		end
 	)
 
 
 end
+
+
 
 
 
