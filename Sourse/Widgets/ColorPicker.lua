@@ -2,7 +2,6 @@
 -- CORNUI COLOR PICKER WIDGET
 -- ============================================================
 
-
 local ColorPicker = {}
 
 
@@ -15,25 +14,40 @@ local Services =
 
 
 
-function ColorPicker:Create(Tab, config)
+function ColorPicker.new(Tab, config)
 
 
 	config = config or {}
+
 
 
 	local picker = {
 
 		Type = "ColorPicker",
 
-		Name = config.Name or "Color",
+		Name =
+			config.Name or "Color",
 
-		Value = config.Default or Color3.fromRGB(255,255,255),
 
-		Callback = config.Callback or function() end,
+		Value =
+			config.Default or Color3.fromRGB(
+				255,
+				255,
+				255
+			),
 
-		Flag = config.Flag,
+
+		Callback =
+			config.Callback or function()
+			end,
+
+
+		Flag =
+			config.Flag,
+
 
 		Open = false,
+
 
 		Tab = Tab,
 
@@ -42,18 +56,19 @@ function ColorPicker:Create(Tab, config)
 
 
 	table.insert(
-		Tab.Widgets,
+		Tab.Elements,
 		picker
 	)
 
 
 
-	-- Flag
+	-- Flag support
 
 	if picker.Flag then
 
 		Tab.Window.Flags =
 			Tab.Window.Flags or {}
+
 
 		Tab.Window.Flags[picker.Flag] =
 			picker.Value
@@ -62,83 +77,97 @@ function ColorPicker:Create(Tab, config)
 
 
 
-	-- ========================================================
-	-- MAIN BUTTON
-	-- ========================================================
 
+
+	-- Main button
 
 	local button =
-		Instance.new("TextButton")
+		Tab.Window._create(
+			"TextButton",
+			{
+
+				Name =
+					picker.Name,
 
 
-	button.Name =
-		picker.Name
+				Size =
+					UDim2.new(
+						1,
+						0,
+						0,
+						38
+					),
 
 
-	button.Size =
-		UDim2.new(
-			1,
-			0,
-			0,
-			38
+				BackgroundColor3 =
+					ThemeManager:GetColor(
+						"Element"
+					),
+
+
+				Text = "",
+
+
+			}
 		)
 
 
-	button.BackgroundColor3 =
-		ThemeManager:GetColor("Element")
-
-
-	button.Text =
-		""
-
 
 	button.Parent =
-		Tab.Container
+		Tab.Page
 
 
 
 
 
 	local label =
-		Instance.new("TextLabel")
+		Tab.Window._create(
+			"TextLabel",
+			{
+
+				Size =
+					UDim2.new(
+						1,
+						-50,
+						1,
+						0
+					),
 
 
-	label.Size =
-		UDim2.new(
-			1,
-			-50,
-			1,
-			0
+				Position =
+					UDim2.new(
+						0,
+						12,
+						0,
+						0
+					),
+
+
+				BackgroundTransparency = 1,
+
+
+				Text =
+					picker.Name,
+
+
+				TextColor3 =
+					ThemeManager:GetColor(
+						"Text"
+					),
+
+
+				Font =
+					ThemeManager:GetFont(
+						"Main"
+					),
+
+
+				TextXAlignment =
+					Enum.TextXAlignment.Left,
+
+			}
 		)
 
-
-	label.Position =
-		UDim2.new(
-			0,
-			12,
-			0,
-			0
-		)
-
-
-	label.BackgroundTransparency =
-		1
-
-
-	label.Text =
-		picker.Name
-
-
-	label.TextColor3 =
-		ThemeManager:GetColor("Text")
-
-
-	label.Font =
-		ThemeManager:GetFont("Main")
-
-
-	label.TextXAlignment =
-		Enum.TextXAlignment.Left
 
 
 	label.Parent =
@@ -149,29 +178,34 @@ function ColorPicker:Create(Tab, config)
 
 
 	local preview =
-		Instance.new("Frame")
+		Tab.Window._create(
+			"Frame",
+			{
+
+				Size =
+					UDim2.new(
+						0,
+						25,
+						0,
+						25
+					),
 
 
-	preview.Size =
-		UDim2.new(
-			0,
-			25,
-			0,
-			25
+				Position =
+					UDim2.new(
+						1,
+						-35,
+						0.5,
+						-12
+					),
+
+
+				BackgroundColor3 =
+					picker.Value,
+
+			}
 		)
 
-
-	preview.Position =
-		UDim2.new(
-			1,
-			-35,
-			0.5,
-			-12
-		)
-
-
-	preview.BackgroundColor3 =
-		picker.Value
 
 
 	preview.Parent =
@@ -181,63 +215,68 @@ function ColorPicker:Create(Tab, config)
 
 
 
-	-- ========================================================
-	-- PICKER HOLDER
-	-- ========================================================
-
-
 	local holder =
-		Instance.new("Frame")
+		Tab.Window._create(
+			"Frame",
+			{
+
+				Name =
+					picker.Name .. "_Picker",
 
 
-	holder.Size =
-		UDim2.new(
-			1,
-			0,
-			0,
-			220
+				Size =
+					UDim2.new(
+						1,
+						0,
+						0,
+						220
+					),
+
+
+				BackgroundColor3 =
+					ThemeManager:GetColor(
+						"Header"
+					),
+
+
+				Visible = false,
+
+			}
 		)
 
-
-	holder.BackgroundColor3 =
-		ThemeManager:GetColor("Header")
-
-
-	holder.Visible =
-		false
 
 
 	holder.Parent =
-		Tab.Container
+		Tab.Page
 
 
 
-
-
-	-- ========================================================
-	-- HSV BOX
-	-- ========================================================
 
 
 	local svBox =
-		Instance.new("Frame")
+		Tab.Window._create(
+			"Frame",
+			{
+
+				Size =
+					UDim2.new(
+						1,
+						-30,
+						0,
+						170
+					),
 
 
-	svBox.Size =
-		UDim2.new(
-			1,
-			-30,
-			0,
-			170
+				BackgroundColor3 =
+					Color3.fromRGB(
+						255,
+						0,
+						0
+					),
+
+			}
 		)
 
-
-	svBox.BackgroundColor3 =
-		Color3.fromRGB(
-			255,
-			0,
-			0
-		)
 
 
 	svBox.Parent =
@@ -247,66 +286,31 @@ function ColorPicker:Create(Tab, config)
 
 
 
-	local svWhite =
-		Instance.new("UIGradient")
-
-
-	svWhite.Color =
-		ColorSequence.new({
-
-			ColorSequenceKeypoint.new(
-				0,
-				Color3.new(1,1,1)
-			),
-
-			ColorSequenceKeypoint.new(
-				1,
-				Color3.new(1,1,1)
-			)
-
-		})
-
-
-	svWhite.Parent =
-		svBox
-
-
-
-
-
-	-- ========================================================
-	-- HUE BAR
-	-- ========================================================
-
-
 	local hue =
-		Instance.new("Frame")
+		Tab.Window._create(
+			"Frame",
+			{
+
+				Size =
+					UDim2.new(
+						0,
+						20,
+						1,
+						0
+					),
 
 
-	hue.Size =
-		UDim2.new(
-			0,
-			20,
-			1,
-			0
+				Position =
+					UDim2.new(
+						1,
+						-20,
+						0,
+						0
+					),
+
+			}
 		)
 
-
-	hue.Position =
-		UDim2.new(
-			1,
-			-20,
-			0,
-			0
-		)
-
-
-	hue.BackgroundColor3 =
-		Color3.fromHSV(
-			0,
-			1,
-			1
-		)
 
 
 	hue.Parent =
@@ -317,11 +321,13 @@ function ColorPicker:Create(Tab, config)
 
 
 	local hueGradient =
-		Instance.new("UIGradient")
+		Instance.new(
+			UIGradient
+		)
 
 
-	hueGradient.Rotation =
-		90
+
+	hueGradient.Rotation = 90
 
 
 	hueGradient.Color =
@@ -329,38 +335,39 @@ function ColorPicker:Create(Tab, config)
 
 			ColorSequenceKeypoint.new(
 				0,
-				Color3.fromRGB(255,0,0)
-			),
-
-			ColorSequenceKeypoint.new(
-				0.16,
-				Color3.fromRGB(255,255,0)
+				Color3.fromRGB(
+					255,
+					0,
+					0
+				)
 			),
 
 			ColorSequenceKeypoint.new(
 				0.33,
-				Color3.fromRGB(0,255,0)
-			),
-
-			ColorSequenceKeypoint.new(
-				0.5,
-				Color3.fromRGB(0,255,255)
+				Color3.fromRGB(
+					0,
+					255,
+					0
+				)
 			),
 
 			ColorSequenceKeypoint.new(
 				0.66,
-				Color3.fromRGB(0,0,255)
-			),
-
-			ColorSequenceKeypoint.new(
-				0.83,
-				Color3.fromRGB(255,0,255)
+				Color3.fromRGB(
+					0,
+					0,
+					255
+				)
 			),
 
 			ColorSequenceKeypoint.new(
 				1,
-				Color3.fromRGB(255,0,0)
-			)
+				Color3.fromRGB(
+					255,
+					0,
+					0
+				)
+			),
 
 		})
 
@@ -370,11 +377,6 @@ function ColorPicker:Create(Tab, config)
 
 
 
-
-
-	-- ========================================================
-	-- COLOR UPDATE
-	-- ========================================================
 
 
 	local function update(color)
@@ -398,7 +400,7 @@ function ColorPicker:Create(Tab, config)
 
 
 
-		local ok,err =
+		local ok, err =
 			pcall(
 				picker.Callback,
 				color
@@ -414,15 +416,11 @@ function ColorPicker:Create(Tab, config)
 
 		end
 
+
 	end
 
 
 
-
-
-	-- ========================================================
-	-- CLICK OPEN
-	-- ========================================================
 
 
 	button.MouseButton1Click:Connect(function()
@@ -440,11 +438,6 @@ function ColorPicker:Create(Tab, config)
 
 
 
-
-
-	-- ========================================================
-	-- DRAG SUPPORT
-	-- ========================================================
 
 
 	local dragging = false
@@ -485,17 +478,14 @@ function ColorPicker:Create(Tab, config)
 
 	Services.UserInputService.InputChanged:Connect(function(input)
 
-
 		if not dragging then
 			return
 		end
 
 
-
 		if input.UserInputType ==
 			Enum.UserInputType.MouseMovement
 		then
-
 
 			local x =
 				math.clamp(
@@ -518,19 +508,15 @@ function ColorPicker:Create(Tab, config)
 
 
 
-			local color =
+			update(
 				Color3.fromHSV(
 					x,
 					1-y,
 					1
 				)
-
-
-			update(color)
-
+			)
 
 		end
-
 
 	end)
 
@@ -538,18 +524,9 @@ function ColorPicker:Create(Tab, config)
 
 
 
-	-- ========================================================
-	-- PUBLIC API
-	-- ========================================================
-
-
 	function picker:SetValue(color)
 
-
-		update(
-			color
-		)
-
+		update(color)
 
 	end
 
@@ -569,6 +546,34 @@ function ColorPicker:Create(Tab, config)
 
 	picker.Instance =
 		button
+
+
+
+
+
+	ThemeManager:RegisterWidget(
+		picker,
+		function(widget)
+
+			if widget.Instance then
+
+				widget.Instance.BackgroundColor3 =
+					ThemeManager:GetColor(
+						"Element"
+					)
+
+			end
+
+		end
+	)
+
+
+
+
+
+	Tab.Window:RegisterWidget(
+		picker
+	)
 
 
 
