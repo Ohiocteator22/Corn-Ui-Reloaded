@@ -3,13 +3,14 @@
 -- ============================================================
 
 
-local Utils = require(
-	script.Parent.Parent.Core.Utils
-)
+local Utils =
+	require(script.Parent.Parent.Core.Utils)
 
-local Services = require(
-	script.Parent.Parent.Core.Services
-)
+
+local Services =
+	require(script.Parent.Parent.Core.Services)
+
+
 
 local ProgressBar = {}
 
@@ -17,13 +18,19 @@ ProgressBar.__index = ProgressBar
 
 
 
+
+
+
 -- ============================================================
 -- CREATE
 -- ============================================================
 
-function ProgressBar.new(parent, config)
+function ProgressBar.new(Tab, config)
 
-	config = config or {}
+
+	config =
+		config or {}
+
 
 
 	local self =
@@ -31,7 +38,19 @@ function ProgressBar.new(parent, config)
 
 
 
-	self.Parent = parent
+	self.Type =
+		"ProgressBar"
+
+
+
+	self.Tab =
+		Tab
+
+
+
+	self.Parent =
+		Tab.Page
+
 
 
 	self.Min =
@@ -39,14 +58,17 @@ function ProgressBar.new(parent, config)
 		or 0
 
 
+
 	self.Max =
 		config.Max
 		or 100
 
 
+
 	self.Value =
 		config.Value
 		or 0
+
 
 
 	self.Size =
@@ -85,7 +107,22 @@ function ProgressBar.new(parent, config)
 
 
 
+
+
 	self:_Create()
+
+
+
+	table.insert(
+		Tab.Elements,
+		self
+	)
+
+
+
+	Tab.Window:RegisterWidget(
+		self
+	)
 
 
 
@@ -96,11 +133,15 @@ end
 
 
 
+
+
+
 -- ============================================================
 -- BUILD
 -- ============================================================
 
 function ProgressBar:_Create()
+
 
 
 	local holder =
@@ -120,17 +161,31 @@ function ProgressBar:_Create()
 					self.Background,
 
 
-				BorderSizePixel = 0,
+				BorderSizePixel =
+					0,
 
+
+				LayoutOrder =
+					#self.Parent:GetChildren()
 
 			}
-
 		)
+
+
 
 
 
 	holder.Parent =
 		self.Parent
+
+
+
+	self.Instance =
+		holder
+
+
+
+
 
 
 
@@ -149,13 +204,12 @@ function ProgressBar:_Create()
 		)
 
 
+
 	corner.Parent =
 		holder
 
 
 
-	self.Instance =
-		holder
 
 
 
@@ -183,8 +237,8 @@ function ProgressBar:_Create()
 					self.Color,
 
 
-				BorderSizePixel = 0,
-
+				BorderSizePixel =
+					0
 
 			}
 		)
@@ -193,6 +247,13 @@ function ProgressBar:_Create()
 
 	fill.Parent =
 		holder
+
+
+
+	self.Fill =
+		fill
+
+
 
 
 
@@ -211,19 +272,19 @@ function ProgressBar:_Create()
 		)
 
 
+
 	fillCorner.Parent =
 		fill
 
 
 
-	self.Fill =
-		fill
 
 
 
 
 
 	if self.ShowText then
+
 
 
 		local label =
@@ -235,7 +296,8 @@ function ProgressBar:_Create()
 						"ProgressText",
 
 
-					BackgroundTransparency = 1,
+					BackgroundTransparency =
+						1,
 
 
 					Size =
@@ -261,10 +323,12 @@ function ProgressBar:_Create()
 						Enum.Font.GothamBold,
 
 
-					TextSize = 12
+					TextSize =
+						12
 
 				}
 			)
+
 
 
 
@@ -281,9 +345,14 @@ function ProgressBar:_Create()
 
 
 
+
+
 	self:_Update()
 
 end
+
+
+
 
 
 
@@ -306,6 +375,8 @@ function ProgressBar:_Update(animated)
 
 
 
+
+
 	local size =
 		UDim2.new(
 			percent,
@@ -316,7 +387,10 @@ function ProgressBar:_Update(animated)
 
 
 
+
+
 	if animated then
+
 
 
 		local tween =
@@ -324,11 +398,13 @@ function ProgressBar:_Update(animated)
 
 				self.Fill,
 
+
 				TweenInfo.new(
 					0.25,
 					Enum.EasingStyle.Quad,
 					Enum.EasingDirection.Out
 				),
+
 
 				{
 					Size = size
@@ -339,6 +415,7 @@ function ProgressBar:_Update(animated)
 
 
 		tween:Play()
+
 
 
 
@@ -355,7 +432,9 @@ function ProgressBar:_Update(animated)
 
 
 
+
 	if self.Label then
+
 
 		self.Label.Text =
 			math.floor(
@@ -363,10 +442,15 @@ function ProgressBar:_Update(animated)
 			)
 			.. "%"
 
+
 	end
 
 
+
 end
+
+
+
 
 
 
@@ -378,6 +462,7 @@ end
 function ProgressBar:SetValue(value)
 
 
+
 	self.Value =
 		math.clamp(
 			value,
@@ -386,7 +471,9 @@ function ProgressBar:SetValue(value)
 		)
 
 
+
 	self:_Update(true)
+
 
 
 end
@@ -395,11 +482,14 @@ end
 
 
 
+
 function ProgressBar:SetColor(color)
+
 
 
 	self.Color =
 		color
+
 
 
 	if self.Fill then
@@ -410,7 +500,9 @@ function ProgressBar:SetColor(color)
 	end
 
 
+
 end
+
 
 
 
@@ -419,15 +511,19 @@ end
 function ProgressBar:SetRange(min,max)
 
 
+
 	self.Min =
 		min
+
 
 
 	self.Max =
 		max
 
 
+
 	self:_Update()
+
 
 
 end
@@ -436,7 +532,9 @@ end
 
 
 
+
 function ProgressBar:Destroy()
+
 
 
 	if self.Instance then
@@ -446,10 +544,14 @@ function ProgressBar:Destroy()
 	end
 
 
-	self.Instance = nil
+
+	self.Instance =
+		nil
+
 
 
 end
+
 
 
 
