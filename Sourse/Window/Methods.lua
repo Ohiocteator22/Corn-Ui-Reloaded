@@ -59,9 +59,199 @@ function Methods:CreateTab(window, name, config)
 end
 
 
+-- ============================================================
+-- WIDGET CREATION
+-- ============================================================
+
+
+function Methods:CreateWidget(tab, widgetType, config)
+
+	if not Widgets[widgetType] then
+		
+		warn(
+			"[CornUi] Unknown widget:",
+			widgetType
+		)
+
+		return nil
+	end
+
+
+	local widget =
+		Widgets[widgetType].new(
+			tab.Container,
+			config
+		)
+
+
+	table.insert(
+		tab.Widgets,
+		widget
+	)
+
+
+	return widget
+
+end
+
+-- ============================================================
+-- BUTTON
+-- ============================================================
+function Methods:CreateButton(tab, config)
+
+	return self:CreateWidget(
+		tab,
+		"Button",
+		config
+	)
+
+end
+-- ============================================================
+-- TOGGLE
+-- ============================================================
+function Methods:CreateToggle(tab, config)
+
+	return self:CreateWidget(
+		tab,
+		"Toggle",
+		config
+	)
+
+end
+-- ============================================================
+-- SLIDER
+-- ============================================================
+
+function Methods:CreateSlider(tab, config)
+
+	return self:CreateWidget(
+		tab,
+		"Slider",
+		config
+	)
+
+end
 
 
 
+-- ============================================================
+-- DROPDOWN
+-- ============================================================
+
+
+function Methods:CreateDropdown(tab, config)
+
+	return self:CreateWidget(
+		tab,
+		"Dropdown",
+		config
+	)
+
+end
+
+
+
+-- ============================================================
+-- COLOR PICKER
+-- ============================================================
+function Methods:CreateColorPicker(tab, config)
+
+	return self:CreateWidget(
+		tab,
+		"ColorPicker",
+		config
+	)
+
+end
+
+-- ============================================================
+-- LABEL
+-- ============================================================
+function Methods:CreateLabel(tab, config)
+
+	return self:CreateWidget(
+		tab,
+		"Label",
+		config
+	)
+
+end
+
+-- ============================================================
+-- SECTION
+-- ============================================================
+function Methods:CreateSection(tab, config)
+
+	return self:CreateWidget(
+		tab,
+		"Section",
+		config
+	)
+
+end
+
+-- ============================================================
+-- DIVIDER
+-- ============================================================
+function Methods:CreateDivider(tab, config)
+
+	return self:CreateWidget(
+		tab,
+		"Divider",
+		config
+	)
+
+end
+-- ============================================================
+-- KEYBIND
+-- ============================================================
+function Methods:CreateKeybind(tab, config)
+
+	return self:CreateWidget(
+		tab,
+		"Keybind",
+		config
+	)
+
+end
+
+-- ============================================================
+-- PARAGRAPHS
+-- ============================================================
+function Methods:CreateParagraph(tab, config)
+
+	return self:CreateWidget(
+		tab,
+		"Paragraph",
+		config
+	)
+
+end
+
+-- ============================================================
+-- IMAGE
+-- ============================================================
+function Methods:CreateImage(tab, config)
+
+	return self:CreateWidget(
+		tab,
+		"Image",
+		config
+	)
+
+end
+-- ============================================================
+-- PROGRESS BAR
+-- ============================================================
+function Methods:CreateProgressBar(tab, config)
+
+	return self:CreateWidget(
+		tab,
+		"ProgressBar",
+		config
+	)
+
+end
 -- ============================================================
 -- NOTIFICATION
 -- ============================================================
