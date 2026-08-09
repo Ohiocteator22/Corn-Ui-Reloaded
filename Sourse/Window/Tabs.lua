@@ -1,10 +1,9 @@
 -- ============================================================
 -- CORNUI TAB SYSTEM
--- Handles Window:CreateTab()
+-- Handles Window tabs
 -- ============================================================
 
 local Tabs = {}
-
 
 
 function Tabs.new(window)
@@ -24,94 +23,155 @@ function Tabs.new(window)
 
 		config = config or {}
 
+
 		local name = config.Name or "Tab"
 		local icon = config.Icon
 
 
-	local tab = {
+		local tab = {
+
 			Name = name,
 			Icon = icon,
+
 			Elements = {},
 			Widgets = {},
+
 			Window = window,
+
+			Button = nil,
+			Page = nil,
+
+			-- Widget parent
 			Container = nil,
-				}
 
-
-		-- Create tab button
-
-		local button = window._create("TextButton", {
-
-			Name = name .. "_Tab",
-
-			Size = UDim2.new(
-				1,
-				0,
-				0,
-				36
-			),
-
-			BackgroundTransparency = 1,
-
-			Text = name,
-
-			TextColor3 = window.Theme.Text,
-
-			Font = window.Theme.Font,
-
-			TextSize = 14,
-
-			LayoutOrder = #self.Tabs + 1,
-
-		})
-
-
-		button.Parent = window._tabHolder
+		}
 
 
 
-		-- Page container
+		-- ====================================================
+		-- TAB BUTTON
+		-- ====================================================
 
-		local page = window._create("ScrollingFrame", {
+		local button = window._create(
+			"TextButton",
+			{
+
+				Name = name .. "_Tab",
+
+				Size = UDim2.new(
+					1,
+					0,
+					0,
+					36
+				),
+
+				BackgroundTransparency = 1,
+
+				Text = name,
+
+				TextColor3 =
+					window.Theme.Text,
+
+				Font =
+					window.Theme.Font,
+
+				TextSize = 14,
+
+				LayoutOrder =
+					#self.Tabs + 1,
+
+			}
+		)
+
+
+		button.Parent =
+			window._tabHolder
+
+
+
+		-- ====================================================
+		-- PAGE
+		-- ====================================================
+
+		local page = window._create(
+			"ScrollingFrame",
+			{
 
 				Name = name .. "_Page",
-			
-				Size = UDim2.fromScale(
-					1,
-					1
-				),
-			
+
+				Size =
+					UDim2.fromScale(
+						1,
+						1
+					),
+
 				BackgroundTransparency = 1,
-			
+
 				Visible = false,
-			
+
 				ScrollBarThickness = 3,
-			
-				AutomaticCanvasSize = Enum.AutomaticSize.Y,
-			
-				CanvasSize = UDim2.new(
-					0,
-					0,
-					0,
-					0
-				),
-			
-			})
+
+				AutomaticCanvasSize =
+					Enum.AutomaticSize.Y,
+
+				CanvasSize =
+					UDim2.new(
+						0,
+						0,
+						0,
+						0
+					),
+
+			}
+		)
 
 
-		page.Parent = window._pageHolder
-
-		
-		tab.Container = page
-
-
-
-		tab.Button = button
-		tab.Page = page
+		page.Parent =
+			window._pageHolder
 
 
 
-		-- Button switching
+		-- Widget container
+
+		local layout =
+			window._create(
+				"UIListLayout",
+				{
+
+					Padding =
+						UDim.new(
+							0,
+							6
+						),
+
+					SortOrder =
+						Enum.SortOrder.LayoutOrder,
+
+				}
+			)
+
+
+		layout.Parent =
+			page
+
+
+
+		tab.Button =
+			button
+
+
+		tab.Page =
+			page
+
+
+		tab.Container =
+			page
+
+
+
+		-- ====================================================
+		-- CLICK EVENT
+		-- ====================================================
 
 		button.MouseButton1Click:Connect(function()
 
@@ -127,7 +187,8 @@ function Tabs.new(window)
 		)
 
 
-		-- First tab auto-select
+
+		-- First tab
 
 		if not self.Current then
 
@@ -136,19 +197,13 @@ function Tabs.new(window)
 		end
 
 
+
 		return tab
 
 	end
 
-	local layout = window._create(
-	"UIListLayout",
-	{
-		Padding = UDim.new(0,6),
-		SortOrder = Enum.SortOrder.LayoutOrder
-	}
-)
-		
-		layout.Parent = page
+
+
 
 
 	-- ========================================================
@@ -162,16 +217,25 @@ function Tabs.new(window)
 		end
 
 
+
 		for _,other in ipairs(self.Tabs) do
 
-			other.Page.Visible = false
+			if other.Page then
+
+				other.Page.Visible = false
+
+			end
 
 		end
 
 
+
 		tab.Page.Visible = true
 
-		self.Current = tab
+
+		self.Current =
+			tab
+
 
 
 		if window.Signals then
@@ -183,13 +247,15 @@ function Tabs.new(window)
 
 		end
 
+
 	end
 
 
 
 
+
 	-- ========================================================
-	-- GET ACTIVE TAB
+	-- ACTIVE TAB
 	-- ========================================================
 
 	function self:GetActive()
@@ -197,6 +263,7 @@ function Tabs.new(window)
 		return self.Current
 
 	end
+
 
 
 
@@ -223,14 +290,21 @@ function Tabs.new(window)
 		end
 
 
+
 		if tab.Button then
+
 			tab.Button:Destroy()
+
 		end
+
 
 
 		if tab.Page then
+
 			tab.Page:Destroy()
+
 		end
+
 
 
 		if self.Current == tab then
