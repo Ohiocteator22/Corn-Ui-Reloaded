@@ -305,24 +305,23 @@ end
 -- THEME
 -- ============================================================
 
-function Methods:SetTheme(window, name)
-
+function Methods:SetTheme(window,name)
 
 	local success =
 		ThemeManager:LoadTheme(name)
 
 
+	if success then
 
-	if not success then
-
-		warn(
-			"[CornUi] Theme not found:",
-			name
-		)
-
-		return false
+		window.ThemeName = name
+		window.Theme = ThemeManager.Theme
 
 	end
+
+
+	return success
+
+end
 
 
 
