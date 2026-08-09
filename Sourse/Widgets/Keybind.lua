@@ -2,20 +2,12 @@
 -- CORNUI KEYBIND WIDGET
 -- ============================================================
 
-
-local Services = require(
-	script.Parent.Parent.Core.Services
-)
+local Services =
+	require(script.Parent.Parent.Core.Services)
 
 
-local Utils = require(
-	script.Parent.Parent.Core.Utils
-)
-
-
-local State = require(
-	script.Parent.Parent.Core.State
-)
+local Utils =
+	require(script.Parent.Parent.Core.Utils)
 
 
 
@@ -25,13 +17,17 @@ Keybind.__index = Keybind
 
 
 
+
+
 -- ============================================================
 -- CREATE
 -- ============================================================
 
-function Keybind.new(parent, config)
+function Keybind.new(Tab, config)
+
 
 	config = config or {}
+
 
 
 	local self =
@@ -39,7 +35,19 @@ function Keybind.new(parent, config)
 
 
 
-	self.Parent = parent
+	self.Type =
+		"Keybind"
+
+
+
+	self.Tab =
+		Tab
+
+
+
+	self.Parent =
+		Tab.Page
+
 
 
 	self.Name =
@@ -48,16 +56,22 @@ function Keybind.new(parent, config)
 
 
 	self.Key =
-		config.Key or Enum.KeyCode.Unknown
+		config.Key
+		or Enum.KeyCode.Unknown
 
 
 
 	self.Callback =
-		config.Callback or function() end
+		config.Callback
+		or function()
+		end
 
 
 
-	self.Listening = false
+	self.Listening =
+		false
+
+
 
 
 
@@ -68,9 +82,23 @@ function Keybind.new(parent, config)
 
 
 
+	table.insert(
+		Tab.Elements,
+		self
+	)
+
+
+
+	Tab.Window:RegisterWidget(
+		self
+	)
+
+
+
 	return self
 
 end
+
 
 
 
@@ -82,57 +110,56 @@ end
 function Keybind:_Create()
 
 
-	State:RegisterWidget(self)
+
+	local holder =
+		Utils.Create(
+			"Frame",
+			{
+
+				Name =
+					self.Name,
 
 
-
-	local holder = Utils.Create(
-		"Frame",
-		{
-
-			Name = self.Name,
-
-
-			BackgroundTransparency = 1,
-
-
-			Size =
-				UDim2.new(
+				BackgroundTransparency =
 					1,
-					0,
-					0,
-					32
-				),
 
 
-			LayoutOrder =
-				#self.Parent:GetChildren()
-
-		},
-
-		{
-
-			Utils.Create(
-				"UIListLayout",
-				{
-
-					FillDirection =
-						Enum.FillDirection.Horizontal,
+				Size =
+					UDim2.new(
+						1,
+						0,
+						0,
+						32
+					),
 
 
-					HorizontalAlignment =
-						Enum.HorizontalAlignment.Right,
+				LayoutOrder =
+					#self.Parent:GetChildren()
+
+			},
+
+			{
+
+				Utils.Create(
+					"UIListLayout",
+					{
+
+						FillDirection =
+							Enum.FillDirection.Horizontal,
 
 
-					VerticalAlignment =
-						Enum.VerticalAlignment.Center
+						HorizontalAlignment =
+							Enum.HorizontalAlignment.Right,
 
-				}
-			)
 
-		}
+						VerticalAlignment =
+							Enum.VerticalAlignment.Center
 
-	)
+					}
+				)
+
+			}
+		)
 
 
 
@@ -147,47 +174,50 @@ function Keybind:_Create()
 
 
 
-	local label = Utils.Create(
-		"TextLabel",
-		{
 
-			Text =
-				self.Name,
+	local label =
+		Utils.Create(
+			"TextLabel",
+			{
+
+				Text =
+					self.Name,
 
 
-			BackgroundTransparency = 1,
-
-
-			Size =
-				UDim2.new(
-					0.7,
-					0,
+				BackgroundTransparency =
 					1,
-					0
-				),
 
 
-			TextColor3 =
-				Color3.fromRGB(
-					220,
-					220,
-					220
-				),
+				Size =
+					UDim2.new(
+						0.7,
+						0,
+						1,
+						0
+					),
 
 
-			Font =
-				Enum.Font.Gotham,
+				TextColor3 =
+					Color3.fromRGB(
+						220,
+						220,
+						220
+					),
 
 
-			TextSize = 14,
+				Font =
+					Enum.Font.Gotham,
 
 
-			TextXAlignment =
-				Enum.TextXAlignment.Left
+				TextSize =
+					14,
 
-		}
 
-	)
+				TextXAlignment =
+					Enum.TextXAlignment.Left
+
+			}
+		)
 
 
 
@@ -203,54 +233,55 @@ function Keybind:_Create()
 
 
 
-	local button = Utils.Create(
-		"TextButton",
-		{
+	local button =
+		Utils.Create(
+			"TextButton",
+			{
 
-			Text =
-				self:_KeyName(),
-
-
-			BackgroundColor3 =
-				Color3.fromRGB(
-					40,
-					40,
-					45
-				),
+				Text =
+					self:_KeyName(),
 
 
-			Size =
-				UDim2.new(
-					0,
-					80,
-					0,
-					26
-				),
+				BackgroundColor3 =
+					Color3.fromRGB(
+						40,
+						40,
+						45
+					),
 
 
-			Font =
-				Enum.Font.GothamBold,
+				Size =
+					UDim2.new(
+						0,
+						80,
+						0,
+						26
+					),
 
 
-			TextSize = 13,
+				Font =
+					Enum.Font.GothamBold,
 
 
-			TextColor3 =
-				Color3.fromRGB(
-					255,
-					255,
-					255
-				)
+				TextSize =
+					13,
 
-		},
 
-		{
+				TextColor3 =
+					Color3.fromRGB(
+						255,
+						255,
+						255
+					)
 
-			Utils.Corner(6)
+			},
 
-		}
+			{
 
-	)
+				Utils.Corner(6)
+
+			}
+		)
 
 
 
@@ -264,16 +295,18 @@ function Keybind:_Create()
 
 
 
-	button.MouseButton1Click:Connect(
-		function()
 
-			self:BeginBind()
 
-		end
-	)
+	button.MouseButton1Click:Connect(function()
+
+		self:BeginBind()
+
+	end)
+
 
 
 end
+
 
 
 
@@ -285,13 +318,17 @@ end
 function Keybind:_Connect()
 
 
+
 	self.Connection =
 		Services.UserInputService.InputBegan:Connect(
 			function(input, processed)
 
+
 				if processed then
 					return
 				end
+
+
 
 
 
@@ -300,12 +337,14 @@ function Keybind:_Connect()
 
 					if input.KeyCode ~= Enum.KeyCode.Unknown then
 
+
 						self:SetKey(
 							input.KeyCode
 						)
 
 
-						self.Listening = false
+						self.Listening =
+							false
 
 
 					end
@@ -321,9 +360,23 @@ function Keybind:_Connect()
 
 				if input.KeyCode == self.Key then
 
-					self.Callback()
+					local success, err =
+						pcall(
+							self.Callback
+						)
+
+
+					if not success then
+
+						warn(
+							"[CornUi Keybind Error]",
+							err
+						)
+
+					end
 
 				end
+
 
 
 			end
@@ -335,6 +388,7 @@ end
 
 
 
+
 -- ============================================================
 -- REBIND
 -- ============================================================
@@ -342,14 +396,18 @@ end
 function Keybind:BeginBind()
 
 
-	self.Listening = true
+	self.Listening =
+		true
+
 
 
 	self.Button.Text =
 		"..."
 
 
+
 end
+
 
 
 
@@ -357,26 +415,32 @@ end
 function Keybind:SetKey(key)
 
 
-	self.Key = key
+	self.Key =
+		key
+
 
 
 	self.Button.Text =
 		self:_KeyName()
 
 
-
 end
+
+
 
 
 
 function Keybind:_KeyName()
 
 
-	if self.Key == Enum.KeyCode.Unknown then
+	if self.Key ==
+		Enum.KeyCode.Unknown
+	then
 
 		return "None"
 
 	end
+
 
 
 	return self.Key.Name
@@ -386,17 +450,23 @@ end
 
 
 
+
 -- ============================================================
 -- METHODS
 -- ============================================================
 
-
 function Keybind:SetCallback(callback)
 
+
 	self.Callback =
-		callback or function() end
+		callback
+		or function()
+		end
+
 
 end
+
+
 
 
 
@@ -405,6 +475,7 @@ function Keybind:GetKey()
 	return self.Key
 
 end
+
 
 
 
@@ -429,6 +500,8 @@ function Keybind:Destroy()
 
 
 end
+
+
 
 
 
