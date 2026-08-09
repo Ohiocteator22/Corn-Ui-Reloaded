@@ -1,9 +1,9 @@
 -- ============================================================
--- CORNUI DROPDOWN WIDGET
+-- CORNUI DIVIDER WIDGET
 -- ============================================================
 
-
-local Dropdown = {}
+local Utils =
+	require(script.Parent.Parent.Core.Utils)
 
 
 local ThemeManager =
@@ -11,482 +11,278 @@ local ThemeManager =
 
 
 
-function Dropdown:Create(Tab, config)
+local Divider = {}
+
+Divider.__index = Divider
+
+
+
+
+
+-- ============================================================
+-- CREATE
+-- ============================================================
+
+function Divider.new(Tab, config)
 
 
 	config = config or {}
 
 
 
-	local dropdown = {
+	local self =
+		setmetatable({}, Divider)
 
-		Type = "Dropdown",
 
-		Name = config.Name or "Dropdown",
 
-		Options = config.Options or {},
+	self.Type =
+		"Divider"
 
-		Value = config.Default,
 
-		Callback = config.Callback or function() end,
 
-		Flag = config.Flag,
+	self.Tab =
+		Tab
 
-		Open = false,
 
-		Tab = Tab,
 
-	}
+	self.Parent =
+		Tab.Page
+
+
+
+	self.Color =
+		config.Color
+
+
+
+	self.Thickness =
+		config.Thickness or 1
+
+
+
+	self.Margin =
+		config.Margin or 6
+
+
+
+
+	self:_Create()
 
 
 
 	table.insert(
-		Tab.Widgets,
-		dropdown
+		Tab.Elements,
+		self
 	)
 
 
 
-	-- Flag
+	Tab.Window:RegisterWidget(
+		self
+	)
 
-	if dropdown.Flag then
 
-		Tab.Window.Flags =
-			Tab.Window.Flags or {}
 
+	return self
 
-		Tab.Window.Flags[dropdown.Flag] =
-			dropdown.Value
+end
 
-	end
 
 
 
-	-- ========================================================
-	-- MAIN BUTTON
-	-- ========================================================
 
+-- ============================================================
+-- BUILD
+-- ============================================================
 
-	local button =
-		Instance.new("TextButton")
+function Divider:_Create()
 
-
-	button.Name =
-		dropdown.Name
-
-
-	button.Size =
-		UDim2.new(
-			1,
-			0,
-			0,
-			38
-		)
-
-
-	button.BackgroundColor3 =
-		ThemeManager:GetColor("Element")
-
-
-	button.Text =
-		""
-
-
-	button.Parent =
-		Tab.Container
-
-
-
-
-
-	local label =
-		Instance.new("TextLabel")
-
-
-	label.Size =
-		UDim2.new(
-			1,
-			-35,
-			1,
-			0
-		)
-
-
-	label.Position =
-		UDim2.new(
-			0,
-			12,
-			0,
-			0
-		)
-
-
-	label.BackgroundTransparency =
-		1
-
-
-	label.Text =
-		dropdown.Name
-		..
-		": "
-		..
-		tostring(dropdown.Value or "None")
-
-
-	label.TextColor3 =
-		ThemeManager:GetColor("Text")
-
-
-	label.Font =
-		ThemeManager:GetFont("Main")
-
-
-	label.TextXAlignment =
-		Enum.TextXAlignment.Left
-
-
-	label.Parent =
-		button
-
-
-
-
-
-	local arrow =
-		Instance.new("TextLabel")
-
-
-	arrow.Size =
-		UDim2.new(
-			0,
-			25,
-			1,
-			0
-		)
-
-
-	arrow.Position =
-		UDim2.new(
-			1,
-			-30,
-			0,
-			0
-		)
-
-
-	arrow.BackgroundTransparency =
-		1
-
-
-	arrow.Text =
-		"▼"
-
-
-	arrow.TextColor3 =
-		ThemeManager:GetColor("SubText")
-
-
-	arrow.Font =
-		ThemeManager:GetFont("Bold")
-
-
-	arrow.Parent =
-		button
-
-
-
-
-
-	-- ========================================================
-	-- OPTION HOLDER
-	-- ========================================================
 
 
 	local holder =
-		Instance.new("Frame")
+		Utils.Create(
+			"Frame",
+			{
+
+				Name =
+					"Divider",
 
 
-	holder.Name =
-		"Options"
+				BackgroundTransparency =
+					1,
 
 
-	holder.Size =
-		UDim2.new(
-			1,
-			0,
-			0,
-			0
+				Size =
+					UDim2.new(
+						1,
+						0,
+						0,
+						self.Thickness
+						+
+						self.Margin * 2
+					),
+
+
+				LayoutOrder =
+					#self.Parent:GetChildren()
+
+			}
 		)
 
-
-	holder.BackgroundColor3 =
-		ThemeManager:GetColor("Header")
-
-
-	holder.ClipsDescendants =
-		true
-
-
-	holder.Visible =
-		false
 
 
 	holder.Parent =
-		Tab.Container
+		self.Parent
 
 
 
 
 
-	local layout =
-		Instance.new("UIListLayout")
+	local line =
+		Utils.Create(
+			"Frame",
+			{
+
+				Name =
+					"Line",
 
 
-	layout.Padding =
-		UDim.new(
-			0,
-			2
+				BackgroundColor3 =
+					self.Color
+					or
+					ThemeManager:GetColor(
+						"Stroke"
+					),
+
+
+				BorderSizePixel =
+					0,
+
+
+				Position =
+					UDim2.new(
+						0,
+						0,
+						0.5,
+						0
+					),
+
+
+				AnchorPoint =
+					Vector2.new(
+						0,
+						0.5
+					),
+
+
+				Size =
+					UDim2.new(
+						1,
+						0,
+						0,
+						self.Thickness
+					)
+
+			}
 		)
 
 
-	layout.Parent =
+
+	line.Parent =
 		holder
 
 
 
 
 
-	-- ========================================================
-	-- SELECT OPTION
-	-- ========================================================
+	self.Instance =
+		holder
 
 
-	local function select(option)
 
+	self.Line =
+		line
 
-		dropdown.Value =
-			option
 
-
-
-		label.Text =
-			dropdown.Name
-			..
-			": "
-			..
-			tostring(option)
-
-
-
-		if dropdown.Flag then
-
-			Tab.Window.Flags[dropdown.Flag] =
-				option
-
-		end
-
-
-
-		local success,err =
-			pcall(
-				dropdown.Callback,
-				option
-			)
-
-
-		if not success then
-
-			warn(
-				"[CornUi Dropdown Error]",
-				err
-			)
-
-		end
-
-
-	end
-
-
-
-
-
-	local function rebuild()
-
-
-		for _,child in ipairs(holder:GetChildren()) do
-
-			if child:IsA("TextButton") then
-
-				child:Destroy()
-
-			end
-
-		end
-
-
-
-		for _,option in ipairs(dropdown.Options) do
-
-
-			local optionButton =
-				Instance.new("TextButton")
-
-
-			optionButton.Size =
-				UDim2.new(
-					1,
-					0,
-					0,
-					30
-				)
-
-
-			optionButton.BackgroundColor3 =
-				ThemeManager:GetColor("Element")
-
-
-			optionButton.Text =
-				tostring(option)
-
-
-			optionButton.TextColor3 =
-				ThemeManager:GetColor("Text")
-
-
-			optionButton.Font =
-				ThemeManager:GetFont("Main")
-
-
-			optionButton.Parent =
-				holder
-
-
-
-			optionButton.MouseButton1Click:Connect(function()
-
-				select(option)
-
-			end)
-
-
-		end
-
-
-	end
-
-
-
-
-
-	rebuild()
-
-
-
-	-- ========================================================
-	-- OPEN / CLOSE
-	-- ========================================================
-
-
-	button.MouseButton1Click:Connect(function()
-
-
-		dropdown.Open =
-			not dropdown.Open
-
-
-
-		holder.Visible =
-			dropdown.Open
-
-
-
-		if dropdown.Open then
-
-			holder.Size =
-				UDim2.new(
-					1,
-					0,
-					0,
-					layout.AbsoluteContentSize.Y
-				)
-
-			arrow.Text =
-				"▲"
-
-		else
-
-			holder.Size =
-				UDim2.new(
-					1,
-					0,
-					0,
-					0
-				)
-
-			arrow.Text =
-				"▼"
-
-		end
-
-
-	end)
-
-
-
-	-- ========================================================
-	-- PUBLIC API
-	-- ========================================================
-
-
-	function dropdown:SetValue(value)
-
-
-		select(
-			value
-		)
-
-
-	end
-
-
-
-
-
-	function dropdown:GetValue()
-
-
-		return dropdown.Value
-
-
-	end
-
-
-
-
-
-	function dropdown:Refresh(options)
-
-
-		dropdown.Options =
-			options or {}
-
-
-		rebuild()
-
-
-	end
-
-
-
-	dropdown.Instance =
-		button
-
-
-
-	return dropdown
 
 end
 
 
 
-return Dropdown
+
+
+-- ============================================================
+-- METHODS
+-- ============================================================
+
+function Divider:SetColor(color)
+
+
+	self.Color =
+		color
+
+
+
+	if self.Line then
+
+		self.Line.BackgroundColor3 =
+			color
+
+	end
+
+
+end
+
+
+
+
+
+function Divider:SetThickness(value)
+
+
+	self.Thickness =
+		value
+
+
+
+	if self.Line then
+
+		self.Line.Size =
+			UDim2.new(
+				1,
+				0,
+				0,
+				value
+			)
+
+	end
+
+
+end
+
+
+
+
+
+function Divider:Destroy()
+
+
+	if self.Instance then
+
+		self.Instance:Destroy()
+
+	end
+
+
+
+	self.Instance =
+		nil
+
+
+end
+
+
+
+
+
+return Divider
