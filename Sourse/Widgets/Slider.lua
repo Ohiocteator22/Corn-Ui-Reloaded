@@ -3,11 +3,8 @@
 -- ============================================================
 
 
-local Slider = {}
-
-
-local ThemeManager =
-	require(script.Parent.Parent.Core.ThemeManager)
+local Utils =
+	require(script.Parent.Parent.Core.Utils)
 
 
 local Services =
@@ -15,122 +12,216 @@ local Services =
 
 
 
-function Slider:Create(Tab, config)
+local Slider = {}
+
+Slider.__index = Slider
 
 
-	config = config or {}
 
 
 
-	local slider = {
 
-		Type = "Slider",
+-- ============================================================
+-- CREATE
+-- ============================================================
 
-		Name = config.Name or "Slider",
+function Slider.new(Tab, config)
 
-		Min = config.Min or 0,
 
-		Max = config.Max or 100,
+	config =
+		config or {}
 
-		Value = config.Default or config.Min or 0,
 
-		Increment = config.Increment or 1,
 
-		Callback = config.Callback or function() end,
+	local self =
+		setmetatable({}, Slider)
 
-		Flag = config.Flag,
 
-		Tab = Tab,
 
-	}
+	self.Type =
+		"Slider"
+
+
+
+	self.Tab =
+		Tab
+
+
+
+	self.Parent =
+		Tab.Page
+
+
+
+	self.Name =
+		config.Name
+		or "Slider"
+
+
+
+	self.Min =
+		config.Min
+		or 0
+
+
+
+	self.Max =
+		config.Max
+		or 100
+
+
+
+	self.Value =
+		config.Default
+		or self.Min
+
+
+
+	self.Increment =
+		config.Increment
+		or 1
+
+
+
+	self.Callback =
+		config.Callback
+		or function() end
+
+
+
+	self.Flag =
+		config.Flag
+
+
+
+	self:_Create()
 
 
 
 	table.insert(
-		Tab.Widgets,
-		slider
+		Tab.Elements,
+		self
 	)
 
 
 
-	-- Flag system
-
-	if slider.Flag then
-
-		Tab.Window.Flags =
-			Tab.Window.Flags or {}
-
-		Tab.Window.Flags[slider.Flag] =
-			slider.Value
-
-	end
+	Tab.Window:RegisterWidget(
+		self
+	)
 
 
 
-	-- ========================================================
-	-- UI
-	-- ========================================================
+	return self
+
+end
+
+
+
+
+
+
+
+-- ============================================================
+-- BUILD
+-- ============================================================
+
+function Slider:_Create()
+
 
 
 	local holder =
-		Instance.new("Frame")
+		Utils.Create(
+			"Frame",
+			{
+
+				Name =
+					self.Name,
 
 
-	holder.Name =
-		slider.Name
+				Size =
+					UDim2.new(
+						1,
+						0,
+						0,
+						45
+					),
 
 
-	holder.Size =
-		UDim2.new(
-			1,
-			0,
-			0,
-			45
+				BackgroundTransparency =
+					1,
+
+
+				LayoutOrder =
+					#self.Parent:GetChildren()
+
+			}
 		)
 
 
-	holder.BackgroundTransparency =
-		1
+
 
 
 	holder.Parent =
-		Tab.Container
+		self.Parent
+
+
+
+	self.Instance =
+		holder
+
+
 
 
 
 
 
 	local title =
-		Instance.new("TextLabel")
+		Utils.Create(
+			"TextLabel",
+			{
+
+				Size =
+					UDim2.new(
+						1,
+						0,
+						0,
+						18
+					),
 
 
-	title.Size =
-		UDim2.new(
-			1,
-			0,
-			0,
-			18
+				BackgroundTransparency =
+					1,
+
+
+				Text =
+					self.Name
+					.. ": "
+					.. self.Value,
+
+
+				TextColor3 =
+					Color3.fromRGB(
+						220,
+						220,
+						220
+					),
+
+
+				Font =
+					Enum.Font.Gotham,
+
+
+				TextSize =
+					14,
+
+
+				TextXAlignment =
+					Enum.TextXAlignment.Left
+
+			}
 		)
 
 
-	title.BackgroundTransparency =
-		1
-
-
-	title.Text =
-		slider.Name .. ": " .. slider.Value
-
-
-	title.TextColor3 =
-		ThemeManager:GetColor("Text")
-
-
-	title.Font =
-		ThemeManager:GetFont("Main")
-
-
-	title.TextXAlignment =
-		Enum.TextXAlignment.Left
 
 
 	title.Parent =
@@ -138,36 +229,56 @@ function Slider:Create(Tab, config)
 
 
 
+	self.Title =
+		title
+
+
+
+
+
 
 
 	local bar =
-		Instance.new("Frame")
+		Utils.Create(
+			"Frame",
+			{
+
+				Name =
+					"SliderBar",
 
 
-	bar.Name =
-		"SliderBar"
+				Position =
+					UDim2.new(
+						0,
+						0,
+						0,
+						25
+					),
 
 
-	bar.Position =
-		UDim2.new(
-			0,
-			0,
-			0,
-			25
+				Size =
+					UDim2.new(
+						1,
+						0,
+						0,
+						8
+					),
+
+
+				BackgroundColor3 =
+					Color3.fromRGB(
+						45,
+						45,
+						50
+					),
+
+
+				BorderSizePixel =
+					0
+
+			}
 		)
 
-
-	bar.Size =
-		UDim2.new(
-			1,
-			0,
-			0,
-			8
-		)
-
-
-	bar.BackgroundColor3 =
-		ThemeManager:GetColor("Element")
 
 
 	bar.Parent =
@@ -175,27 +286,47 @@ function Slider:Create(Tab, config)
 
 
 
+	self.Bar =
+		bar
+
+
+
+
+
 
 
 	local fill =
-		Instance.new("Frame")
+		Utils.Create(
+			"Frame",
+			{
+
+				Name =
+					"Fill",
 
 
-	fill.Name =
-		"Fill"
+				Size =
+					UDim2.new(
+						0,
+						0,
+						1,
+						0
+					),
 
 
-	fill.Size =
-		UDim2.new(
-			0,
-			0,
-			1,
-			0
+				BackgroundColor3 =
+					Color3.fromRGB(
+						255,
+						196,
+						48
+					),
+
+
+				BorderSizePixel =
+					0
+
+			}
 		)
 
-
-	fill.BackgroundColor3 =
-		ThemeManager:GetColor("Accent")
 
 
 	fill.Parent =
@@ -203,175 +334,79 @@ function Slider:Create(Tab, config)
 
 
 
-
-
-	-- ========================================================
-	-- VALUE HANDLING
-	-- ========================================================
-
-
-	local function round(value)
-
-
-		local increment =
-			slider.Increment
-
-
-		return math.floor(
-			value / increment + 0.5
-		)
-		*
-		increment
-
-
-	end
+	self.Fill =
+		fill
 
 
 
 
 
-	local function update(value, fireCallback)
-
-
-		value =
-			math.clamp(
-				value,
-				slider.Min,
-				slider.Max
-			)
-
-
-		value =
-			round(value)
-
-
-
-		slider.Value =
-			value
-
-
-
-		local percent =
-			(value - slider.Min)
-			/
-			(slider.Max - slider.Min)
-
-
-
-		fill.Size =
-			UDim2.new(
-				percent,
-				0,
-				1,
-				0
-			)
-
-
-
-		title.Text =
-			slider.Name
-			..
-			": "
-			..
-			tostring(value)
-
-
-
-		if slider.Flag then
-
-			Tab.Window.Flags[slider.Flag] =
-				value
-
-		end
-
-
-
-		if fireCallback then
-
-			local success,err =
-				pcall(
-					slider.Callback,
-					value
-				)
-
-
-			if not success then
-
-				warn(
-					"[CornUi Slider Error]",
-					err
-				)
-
-			end
-
-		end
-
-	end
-
-
-
-	update(
-		slider.Value,
+	self:_Update(
+		self.Value,
 		false
 	)
 
 
 
+
+
+
+
 	-- ========================================================
-	-- DRAGGING
+	-- INPUT
 	-- ========================================================
 
 
-	local dragging = false
+	local dragging =
+		false
+
+
 
 
 
 	local function setFromInput(input)
 
 
-		local position =
-			input.Position.X
-
-
-
-		local start =
-			bar.AbsolutePosition.X
-
-
-
-		local width =
-			bar.AbsoluteSize.X
-
-
 
 		local percent =
 			math.clamp(
-				(position - start) / width,
+				(
+					input.Position.X
+					-
+					bar.AbsolutePosition.X
+				)
+				/
+				bar.AbsoluteSize.X,
 				0,
 				1
 			)
 
 
 
+
 		local value =
-			slider.Min
+			self.Min
 			+
 			(
-				slider.Max
+				self.Max
 				-
-				slider.Min
+				self.Min
 			)
 			*
 			percent
 
 
 
-		update(
+
+		self:_Update(
 			value,
 			true
 		)
 
+
 	end
+
+
 
 
 
@@ -387,9 +422,16 @@ function Slider:Create(Tab, config)
 			Enum.UserInputType.Touch
 		then
 
-			dragging = true
 
-			setFromInput(input)
+			dragging =
+				true
+
+
+
+			setFromInput(
+				input
+			)
+
 
 		end
 
@@ -400,7 +442,10 @@ function Slider:Create(Tab, config)
 
 
 
+
+
 	Services.UserInputService.InputChanged:Connect(function(input)
+
 
 
 		if not dragging then
@@ -416,12 +461,18 @@ function Slider:Create(Tab, config)
 			Enum.UserInputType.Touch
 		then
 
-			setFromInput(input)
+
+			setFromInput(
+				input
+			)
+
 
 		end
 
 
 	end)
+
+
 
 
 
@@ -434,7 +485,10 @@ function Slider:Create(Tab, config)
 			Enum.UserInputType.MouseButton1
 		then
 
-			dragging = false
+
+			dragging =
+				false
+
 
 		end
 
@@ -443,42 +497,229 @@ function Slider:Create(Tab, config)
 
 
 
-	-- ========================================================
-	-- PUBLIC API
-	-- ========================================================
+end
 
 
-	function slider:SetValue(value)
 
 
-		update(
+
+
+
+-- ============================================================
+-- UPDATE
+-- ============================================================
+
+function Slider:_Update(value, fire)
+
+
+
+	value =
+		math.clamp(
 			value,
-			true
+			self.Min,
+			self.Max
 		)
 
 
+
+
+
+	value =
+		math.floor(
+			value / self.Increment + 0.5
+		)
+		*
+		self.Increment
+
+
+
+
+
+	self.Value =
+		value
+
+
+
+
+
+	local percent =
+		(
+			value
+			-
+			self.Min
+		)
+		/
+		(
+			self.Max
+			-
+			self.Min
+		)
+
+
+
+
+
+	self.Fill.Size =
+		UDim2.new(
+			percent,
+			0,
+			1,
+			0
+		)
+
+
+
+
+
+	self.Title.Text =
+		self.Name
+		..
+		": "
+		..
+		value
+
+
+
+
+
+	if self.Flag then
+
+
+		self.Tab.Window.Flags =
+			self.Tab.Window.Flags
+			or {}
+
+
+
+		self.Tab.Window.Flags[self.Flag] =
+			value
+
+
 	end
 
 
 
 
 
-	function slider:GetValue()
 
-		return slider.Value
+	if fire then
+
+
+		local success,err =
+			pcall(
+				self.Callback,
+				value
+			)
+
+
+
+		if not success then
+
+
+			warn(
+				"[CornUi Slider Error]",
+				err
+			)
+
+
+		end
+
 
 	end
 
-
-
-	slider.Instance =
-		holder
-
-
-
-	return slider
 
 end
+
+
+
+
+
+
+
+-- ============================================================
+-- METHODS
+-- ============================================================
+
+function Slider:SetValue(value)
+
+
+
+	self:_Update(
+		value,
+		true
+	)
+
+
+
+end
+
+
+
+
+
+
+function Slider:GetValue()
+
+
+	return self.Value
+
+
+end
+
+
+
+
+
+
+function Slider:SetRange(min,max)
+
+
+
+	self.Min =
+		min
+
+
+
+	self.Max =
+		max
+
+
+
+	self:_Update(
+		self.Value,
+		false
+	)
+
+
+
+end
+
+
+
+
+
+
+function Slider:Destroy()
+
+
+
+	if self.Instance then
+
+		self.Instance:Destroy()
+
+	end
+
+
+
+	self.Instance =
+		nil
+
+
+
+end
+
+
+
 
 
 
