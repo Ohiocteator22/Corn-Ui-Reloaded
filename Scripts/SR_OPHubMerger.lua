@@ -59,6 +59,7 @@ local CombatTab = Window:CreateTab("⚔️ Combat")
 local BETATab = Window:CreateTab("🧪 BETA")
 local SafetyTab = Window:CreateTab("🛡️ Safety")
 local SettingsTab = Window:CreateTab("⚙️ Settings")
+local CreditsTab = Window:CreateTab("💖 Credits")
 
 -- ============================================================
 -- NOTIFICATION SYSTEM
@@ -4542,6 +4543,18 @@ SettingsSection:CreateButton({
 SettingsSection:CreateLabel("⚙️ Custom Strikes: " .. Teleport.DefaultMaxStrikes)
 SettingsSection:CreateLabel("⚙️ Custom TP Debounce: " .. Teleport.DefaultDebounce)
 SettingsSection:CreateLabel("⚙️ Custom F Lock: " .. Teleport.DefaultPostFLock)
+
+
+
+
+
+local CreditsCard = CreditsTab:CreateCard({ Title = "🧑🏼‍💻 Lead Developer", Subtitle = "Community for the dev of this script and Ui" })
+local CreditsCard2 = CreditsTab:CreateCard({ Title = "🫂 Community", Subtitle = "This is the Community for the Slap Royale Script"})
+CreditsTab:CreateDivider({ Name = "Lead Developer" })
+CreditsCard:CreateDiscordButton({Name = "Dev Discord Server", Invite = "discord.gg/kdBxp8BGuT"})
+CreditsTab:CreateDivider({ Name = "Other Contributors" })
+CreditsCard2:CreateDiscordButton({Name = "community Discord Server", Invite = "discord.gg/d7pkE5aZgb"})
+
 
 -- ============================================================
 -- STARTUP
