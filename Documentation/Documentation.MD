@@ -2,7 +2,7 @@
 > **Current API reference.** This section is the complete widget list for the current `Sourse/CornUi.lua`. Later sections provide more background on selected systems.
 ## Quick start
 ```lua
-local Corn = loadstring(game:HttpGet("YOUR_CORNUI_URL"))()
+local Corn = loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/refs/heads/main/Sourse/CornUi.lua"))()
 local Window = Corn:CreateWindow({ Name = "My Hub" })
 local Tab = Window:CreateTab("Main")
 local Section = Tab:CreateSection("Settings")
