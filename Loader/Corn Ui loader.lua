@@ -26,6 +26,6 @@ if game.PlaceId == 3956818381 then
   loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/refs/heads/main/Scripts/Ninja%20Legends.lua"))()
 end
 if game.PlaceID == 15135285305 then
-  loadstring(game:HttpGet(""))()
+  loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/refs/heads/main/Scripts/GEF.lua"))()
 end
 
