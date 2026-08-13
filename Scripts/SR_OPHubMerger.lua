@@ -21,7 +21,182 @@ local Services = {
 	HttpService = game:GetService("HttpService"),
 	VirtualInputManager = game:GetService("VirtualInputManager"),
 }
+--============================================================
+-- ROLL SYSTEM
+--============================================================
 
+local RollEnabled = false
+
+local ROLL_ANIMATION_ID =
+    "rbxassetid://16299510063"
+
+
+local RollCooldown = false
+local RollAnimation =
+    Instance.new("Animation")
+
+
+RollAnimation.AnimationId =
+    ROLL_ANIMATION_ID
+local function IsRollOnCooldown()
+
+    return RollCooldown
+
+end
+
+
+
+local function StartRollCooldown(duration)
+
+    RollCooldown = true
+
+
+    task.delay(
+        duration,
+        function()
+
+            RollCooldown = false
+
+        end
+    )
+
+end
+local function CreateRollVelocity(character)
+
+    local root =
+        character:FindFirstChild(
+            "HumanoidRootPart"
+        )
+
+
+    if not root then
+        return
+    end
+
+
+
+    local old =
+        root:FindFirstChild(
+            "RollVelocity"
+        )
+
+
+    if old then
+        old:Destroy()
+    end
+
+
+
+    local bv =
+        Instance.new("BodyVelocity")
+
+
+    bv.Name =
+        "RollVelocity"
+
+
+    bv.MaxForce =
+        Vector3.new(
+            1e6,
+            0,
+            1e6
+        )
+
+
+    bv.Velocity =
+        root.CFrame.LookVector
+        *
+        100
+
+
+
+    bv.Parent =
+        root
+
+
+
+    task.delay(
+        0.17,
+        function()
+
+            if bv then
+                bv:Destroy()
+            end
+
+        end
+    )
+
+end
+local function PlayRoll()
+
+    if not RollEnabled then
+        return
+    end
+
+
+    if IsRollOnCooldown() then
+        return
+    end
+
+
+
+    local character =
+        LocalPlayer.Character
+
+
+    if not character then
+        return
+    end
+
+
+
+    local humanoid =
+        character:FindFirstChildOfClass(
+            "Humanoid"
+        )
+
+
+    if not humanoid then
+        return
+    end
+
+
+
+    StartRollCooldown(2)
+
+
+
+    local animator =
+        humanoid:FindFirstChildOfClass(
+            "Animator"
+        )
+
+
+
+    if animator then
+
+        pcall(function()
+
+            local track =
+                animator:LoadAnimation(
+                    RollAnimation
+                )
+
+
+            track:Play()
+
+        end)
+
+    end
+
+
+
+    CreateRollVelocity(
+        character
+    )
+
+
+end
 local Players = Services.Players
 local RunService = Services.RunService
 local TweenService = Services.TweenService
@@ -4555,7 +4730,73 @@ CreditsCard:CreateDiscordButton({Name = "Dev Discord Server", Invite = "discord.
 CreditsTab:CreateDivider({ Name = "Other Contributors" })
 CreditsCard2:CreateDiscordButton({Name = "community Discord Server", Invite = "discord.gg/d7pkE5aZgb"})
 
+local ExperimentalSection = BETATab:CreateSection("Experimental Features")
+ExperimentalSection:CreateLabel("These features are experimental and may not work as intended. Use at your own risk.")
+ExperimentalSection:CreateToggle({
 
+    Name = "Roll Ability",
+
+    Default = false,
+
+
+    Callback = function(state)
+
+        RollEnabled = state
+
+
+
+        Window:Notify({
+
+            Title =
+            state
+            and "Roll Enabled"
+            or "Roll Disabled",
+
+
+            Content =
+            state
+            and "Press R to roll"
+            or "Roll ability disabled",
+
+
+            Type =
+            state
+            and "success"
+            or "info",
+
+
+            Duration = 3
+
+        })
+
+
+    end
+
+})
+UserInputService.InputBegan:Connect(function(
+    input,
+    processed
+)
+
+
+    if processed then
+        return
+    end
+
+
+
+    if input.KeyCode ==
+        Enum.KeyCode.R
+    then
+
+
+        PlayRoll()
+
+
+    end
+
+
+end)
 -- ============================================================
 -- STARTUP
 -- ============================================================
@@ -4589,4 +4830,4 @@ if getgenv and getgenv() then
 	end
 end
 
-Notify("OP Slap Royale", "Loaded successfully! CornUi v1.9.2 Port", "success", 5)
+
