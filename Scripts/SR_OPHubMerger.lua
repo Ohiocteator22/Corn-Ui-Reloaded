@@ -16,6 +16,7 @@ local Services = {
 -- ROLL SYSTEM
 --============================================================
 local Players = Services.Players
+local character =  Services.Players.LocalPlayer.Character       
 local RunService = Services.RunService
 local TweenService = Services.TweenService
 local UserInputService = Services.UserInputService
@@ -145,8 +146,7 @@ local function PlayRoll()
 
 
 
-    local character =
-        LocalPlayer.Character
+   
 
 
     if not character then
