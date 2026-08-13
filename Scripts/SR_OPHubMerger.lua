@@ -15,7 +15,21 @@ local Services = {
 --============================================================
 -- ROLL SYSTEM
 --============================================================
+local Players = Services.Players
+local RunService = Services.RunService
+local TweenService = Services.TweenService
+local UserInputService = Services.UserInputService
+local MarketplaceService = Services.MarketplaceService
+local ContextActionService = Services.ContextActionService
+local ReplicatedStorage = Services.ReplicatedStorage
+local TeleportService = Services.TeleportService
+local GuiService = Services.GuiService
+local ProximityPromptService = Services.ProximityPromptService
+local HttpService = Services.HttpService
+local VirtualInputManager = Services.VirtualInputManager
 
+local player = Players.LocalPlayer
+local PlayerGui = player:WaitForChild("PlayerGui")
 local RollEnabled = false
 
 local ROLL_ANIMATION_ID =
@@ -188,21 +202,7 @@ local function PlayRoll()
 
 
 end
-local Players = Services.Players
-local RunService = Services.RunService
-local TweenService = Services.TweenService
-local UserInputService = Services.UserInputService
-local MarketplaceService = Services.MarketplaceService
-local ContextActionService = Services.ContextActionService
-local ReplicatedStorage = Services.ReplicatedStorage
-local TeleportService = Services.TeleportService
-local GuiService = Services.GuiService
-local ProximityPromptService = Services.ProximityPromptService
-local HttpService = Services.HttpService
-local VirtualInputManager = Services.VirtualInputManager
 
-local player = Players.LocalPlayer
-local PlayerGui = player:WaitForChild("PlayerGui")
 
 -- ============================================================
 -- CORNUI SETUP
