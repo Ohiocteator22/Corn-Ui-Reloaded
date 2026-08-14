@@ -174,6 +174,7 @@ function Library:SaveConfig(name)
     local data = {
         Flags = {},
         Theme = Library._currentThemeName or "Dark",
+        Skin = Library._currentSkinName,
         Version = Library.VERSION,
         Timestamp = os.time()
     }
@@ -219,7 +220,9 @@ function Library:LoadConfig(name, window)
         return false
     end
 
-    if data.Theme and window then
+    if data.Skin and window and Library.Skins[data.Skin] then
+        pcall(function() window:SetSkin(data.Skin) end)
+    elseif data.Theme and window then
         pcall(function() window:SetTheme(data.Theme) end)
     end
 
@@ -272,6 +275,7 @@ function Library:ExportConfig(name)
     local data = {
         Flags = {},
         Theme = Library._currentThemeName or "Dark",
+        Skin = Library._currentSkinName,
         Version = Library.VERSION,
         Timestamp = os.time()
     }
@@ -294,7 +298,9 @@ function Library:ImportConfig(jsonText, window)
         return false
     end
 
-    if data.Theme and window then
+    if data.Skin and window and Library.Skins[data.Skin] then
+        pcall(function() window:SetSkin(data.Skin) end)
+    elseif data.Theme and window then
         pcall(function() window:SetTheme(data.Theme) end)
     end
 
@@ -552,6 +558,84 @@ local function tween(inst, props, duration)
     end
     local adjustedDuration = (duration or 0.15) / animationSpeed
     TweenService:Create(inst, TweenInfo.new(adjustedDuration, Enum.EasingStyle.Quad), props):Play()
+end
+
+-- ============================================================
+-- SKIN SYSTEM
+-- ============================================================
+-- A Skin is a bundle layered on top of the existing Theme system — colors
+-- still come from Themes/RegisterTheme, nothing about color-swapping
+-- changes — plus three more independent layers a plain color palette
+-- doesn't touch:
+--   Fonts          — custom Font objects (Font.new(...) or Enum.Font)
+--   AccentTexture  — a tiled image overlay on accent-colored surfaces
+--   WindowTexture  — a tiled image overlay behind the whole window
+--
+--   Library:RegisterSkin("Carbon", {
+--       Theme = "Dark",                                 -- or an inline color table, same shape as RegisterTheme
+--       Fonts = {
+--           Header = Font.new("rbxasset://fonts/families/..."),
+--           Body   = Font.new("rbxasset://fonts/families/..."),
+--           Accent = Font.new("rbxasset://fonts/families/..."),
+--       },
+--       AccentTexture = "rbxassetid://...",
+--       WindowTexture = "rbxassetid://...",
+--       WindowTextureTransparency = 0.85,               -- optional, this is the default
+--   })
+--   Window:SetSkin("Carbon")
+--
+-- SCOPE, stated plainly: AccentTexture currently reaches Slider fill,
+-- ProgressBar fill, Meter fill, and Toggle's on-state switch (including
+-- the three-state Toggle's "on" position) — the surfaces that are
+-- permanently or predictably accent-colored. It doesn't yet reach
+-- ColorPicker swatches, Dropdown's selected state, or Keybind's button;
+-- those can be tagged the same way later. This covers the highest-traffic
+-- surfaces first rather than claiming full coverage it doesn't have.
+Library.Skins = {}
+Library._currentAccentTexture = nil
+Library._currentSkinName = nil
+
+-- Library:RegisterSkin("Name", skinDef) — see the block comment above for
+-- skinDef's shape.
+function Library:RegisterSkin(name, skinDef)
+    if type(name) ~= "string" or type(skinDef) ~= "table" then
+        warn("[MobileUILib] RegisterSkin requires a name string and a skin definition table")
+        return
+    end
+    Library.Skins[name] = skinDef
+end
+
+-- Shared by Window:SetSkin (the initial pass over every accent surface
+-- already on screen) and any element whose "accent-colored" state can
+-- change live after a skin is applied (Toggle's click handler/Set).
+function Library:_applyAccentOverlay(inst, isAccent)
+    if not inst then return end
+    local existing = inst:FindFirstChild("MUI_AccentTexture")
+    local textureId = Library._currentAccentTexture
+    if isAccent and textureId then
+        if not existing then
+            local overlay = create("ImageLabel", {
+                Name = "MUI_AccentTexture",
+                Image = textureId,
+                ScaleType = Enum.ScaleType.Tile,
+                TileSize = UDim2.new(0, 48, 0, 48),
+                BackgroundTransparency = 1,
+                ImageTransparency = 0.25,
+                Size = UDim2.new(1, 0, 1, 0),
+                ZIndex = inst.ZIndex + 3,
+            })
+            overlay:SetAttribute("MUI_NoTheme", true)
+            local existingCorner = inst:FindFirstChildOfClass("UICorner")
+            if existingCorner then
+                local c = Instance.new("UICorner")
+                c.CornerRadius = existingCorner.CornerRadius
+                c.Parent = overlay
+            end
+            overlay.Parent = inst
+        end
+    elseif existing then
+        existing:Destroy()
+    end
 end
 
 -- ============================================================
@@ -2444,7 +2528,8 @@ function WM:SetBackground(input)
         bg = create("ImageLabel", {
             Name = "MUI_Background",
             Image = texture,
-            ScaleType = Enum.ScaleType.Crop,
+            ScaleType = config.ScaleType or Enum.ScaleType.Crop,
+            TileSize = config.TileSize or UDim2.new(0, 128, 0, 128),
             ImageTransparency = config.Transparency or config.ImageTransparency or 0,
             Size = UDim2.new(1, 0, 1, 0),
             BackgroundTransparency = 1,
@@ -2463,6 +2548,82 @@ function WM:ClearBackground()
         self._background:Destroy()
         self._background = nil
     end
+end
+
+-- ============================================================
+-- WINDOW: SET SKIN
+-- ============================================================
+-- Applies a Skin registered via Library:RegisterSkin. See the "SKIN
+-- SYSTEM" comment block near the top of the file for the full shape and
+-- the stated scope of what AccentTexture currently reaches.
+function WM:SetSkin(name)
+    local skin = Library.Skins[name]
+    if not skin then
+        warn("[MobileUILib] SetSkin: no skin registered as '" .. tostring(name) .. "'")
+        return
+    end
+
+    -- 1. Accent-texture pass FIRST, while Theme.Accent still holds the
+    -- OLD/current value — SetTheme (step 2) only mutates Theme in place at
+    -- the very end of its own run, so this is the same "compare against
+    -- what's still on screen right now" trick SetTheme itself uses for
+    -- colors, just for the one attribute-tagged accent layer.
+    Library._currentAccentTexture = skin.AccentTexture
+    for _, inst in ipairs(self._screenGui:GetDescendants()) do
+        if inst:IsA("GuiObject") and inst:GetAttribute("MUI_AccentSurface") then
+            local ok, bg = pcall(function() return inst.BackgroundColor3 end)
+            local isAccent = ok and tostring(bg) == tostring(Theme.Accent)
+            Library:_applyAccentOverlay(inst, isAccent)
+        end
+    end
+
+    -- 2. Colors — delegate entirely to the existing theme machinery so
+    -- color-swapping behavior doesn't change at all.
+    if type(skin.Theme) == "string" then
+        self:SetTheme(skin.Theme)
+    elseif type(skin.Theme) == "table" then
+        Library:RegisterTheme("__skin_" .. name, skin.Theme)
+        self:SetTheme("__skin_" .. name)
+    end
+
+    -- 3. Fonts — same reverse-lookup trick SetTheme uses for colors, but
+    -- keyed on Font instead of Color3. Every label/button/textbox in this
+    -- file only ever uses a small handful of Enum.Font values
+    -- (Gotham/GothamMedium/GothamBold), so this needs no per-element
+    -- tagging to work.
+    if skin.Fonts then
+        local fontMap = {
+            [tostring(Enum.Font.GothamBold)] = skin.Fonts.Header,
+            [tostring(Enum.Font.GothamMedium)] = skin.Fonts.Accent,
+            [tostring(Enum.Font.Gotham)] = skin.Fonts.Body,
+        }
+        for _, inst in ipairs(self._screenGui:GetDescendants()) do
+            if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
+                local newFont = fontMap[tostring(inst.Font)]
+                if newFont then
+                    local ok, err = pcall(function() inst.Font = newFont end)
+                    if not ok then
+                        warn("[MobileUILib] SetSkin: couldn't apply a custom font — " .. tostring(err))
+                    end
+                end
+            end
+        end
+    end
+
+    -- 4. Window texture — reuses SetBackground wholesale (tiled, subtle by
+    -- default) instead of a second parallel image-overlay system. Only
+    -- touches the background if this skin actually specifies one — an
+    -- unrelated background set independently is left alone otherwise.
+    if skin.WindowTexture then
+        self:SetBackground({
+            Texture = skin.WindowTexture,
+            Type = "Image",
+            ScaleType = Enum.ScaleType.Tile,
+            Transparency = skin.WindowTextureTransparency or 0.85,
+        })
+    end
+
+    Library._currentSkinName = name
 end
 
 -- ============================================================
@@ -2953,6 +3114,8 @@ function TM:CreateToggle(config)
         BackgroundColor3 = threeState and Color3.fromRGB(100, 100, 100) or (state and Theme.Accent or Color3.fromRGB(60, 60, 68)),
     }, { corner(18) })
     switchBg.Parent = holder
+    switchBg:SetAttribute("MUI_AccentSurface", true) -- eligible for a Skin's AccentTexture whenever it's actually accent-colored
+    Library:_applyAccentOverlay(switchBg, switchBg.BackgroundColor3 == Theme.Accent)
 
     local knob = create("Frame", {
         Size = UDim2.new(0, touch and (compact and 18 or 22) or (compact and 14 or 16), 0, touch and (compact and 18 or 22) or (compact and 14 or 16)),
@@ -3009,6 +3172,7 @@ function TM:CreateToggle(config)
             switchBg.BackgroundColor3 = state and Theme.Accent or Color3.fromRGB(60, 60, 68)
             knob.Position = state and UDim2.new(1, -((touch and (compact and 18 or 22) or (compact and 14 or 16)) + 3), 0.5, 0) or UDim2.new(0, 3, 0.5, 0)
         end
+        Library:_applyAccentOverlay(switchBg, switchBg.BackgroundColor3 == Theme.Accent)
 
         if config.Flag then Library:SetFlag(config.Flag, state) end
         playInteractionSound("toggle")
@@ -3080,6 +3244,8 @@ function TM:CreateSlider(config)
         BackgroundColor3 = Theme.Accent,
     }, { corner(10) })
     fill.Parent = track
+    fill:SetAttribute("MUI_AccentSurface", true) -- eligible for a Skin's AccentTexture; always accent-colored
+    Library:_applyAccentOverlay(fill, true)
 
     local hitArea = create("TextButton", {
         Text = "",
@@ -4456,6 +4622,8 @@ function TM:CreateProgressBar(config)
         BackgroundColor3 = Theme.Accent,
     }, { corner(8) })
     fill.Parent = track
+    fill:SetAttribute("MUI_AccentSurface", true) -- eligible for a Skin's AccentTexture; always accent-colored
+    Library:_applyAccentOverlay(fill, true)
 
     local function render(v, animate)
         v = math.clamp(v, min, max)
@@ -4540,6 +4708,8 @@ function TM:CreateMeter(config)
         BackgroundColor3 = color,
     }, { corner(8) })
     fill.Parent = track
+    fill:SetAttribute("MUI_AccentSurface", true) -- eligible for a Skin's AccentTexture whenever its color happens to equal Theme.Accent
+    Library:_applyAccentOverlay(fill, color == Theme.Accent)
 
     local function render(v)
         v = math.clamp(v, min, max)
@@ -4563,6 +4733,7 @@ function TM:CreateMeter(config)
         SetColor = function(_, newColor)
             color = newColor
             fill.BackgroundColor3 = color
+            Library:_applyAccentOverlay(fill, color == Theme.Accent)
         end,
     }
     if config.Flag then
@@ -5345,6 +5516,16 @@ function Library:_makePluginContext(window)
 
         RegisterTheme = function(_, name, themeTable)
             self_:RegisterTheme(name, themeTable)
+        end,
+        RegisterSkin = function(_, name, skinDef)
+            self_:RegisterSkin(name, skinDef)
+        end,
+        SetSkin = function(_, name)
+            if not window then
+                warn("[MobileUILib] SetSkin needs a Window — pass one to LoadPlugin/LoadPlugins")
+                return
+            end
+            window:SetSkin(name)
         end,
         RegisterElement = function(_, name, constructor)
             self_:RegisterElement(name, constructor)
