@@ -2597,29 +2597,45 @@ function WM:SetSkin(name)
         [tostring(Enum.Font.GothamMedium)] = skin.Fonts.Accent,
         [tostring(Enum.Font.Gotham)] = skin.Fonts.Body,
     }
+
     for _, inst in ipairs(self._screenGui:GetDescendants()) do
-        if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
-            local newFont = fontMap[tostring(inst.Font)]
+        if inst:IsA("TextLabel")
+            or inst:IsA("TextButton")
+            or inst:IsA("TextBox") then
+
+            local newFont =
+                fontMap[tostring(inst.Font)]
+
             if newFont then
-                local ok, err = pcall(function()
-                    -- If the skin provided a Font object (Font.fromName), assign to FontFace.
-                    if typeof(newFont) == "Font" then
-                        -- FontFace/Font property may not exist on all client builds; pcall to be safe.
-                        local setOk, setErr = pcall(function() inst.FontFace = newFont end)
-                        if not setOk then
-                            -- fallback: if newFont is actually an Enum item (rare), assign to .Font
-                            if typeof(newFont) == "EnumItem" then
-                                inst.Font = newFont
-                            end
-                        end
-                    else
-                        -- Expecting Enum.Font / string / number
-                        inst.Font = newFont
-                    end
+
+                local success, err = pcall(function()
+
+                    -- Custom Font datatype
+                    inst.FontFace = newFont
+
                 end)
-                if not ok then
-                    warn("[CornUi] SetSkin: couldn't apply a custom font — " .. tostring(err))
+
+                if not success then
+
+                    -- Legacy Enum.Font fallback
+                    local fallbackSuccess =
+                        pcall(function()
+
+                            inst.Font = newFont
+
+                        end)
+
+                    if not fallbackSuccess then
+                        warn(
+                            "[MobileUILib] Failed to apply font to "
+                            .. inst:GetFullName()
+                            .. ": "
+                            .. tostring(err)
+                        )
+                    end
+
                 end
+
             end
         end
     end
