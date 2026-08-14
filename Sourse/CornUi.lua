@@ -2591,24 +2591,39 @@ function WM:SetSkin(name)
     -- file only ever uses a small handful of Enum.Font values
     -- (Gotham/GothamMedium/GothamBold), so this needs no per-element
     -- tagging to work.
-    if skin.Fonts then
-        local fontMap = {
-            [tostring(Enum.Font.GothamBold)] = skin.Fonts.Header,
-            [tostring(Enum.Font.GothamMedium)] = skin.Fonts.Accent,
-            [tostring(Enum.Font.Gotham)] = skin.Fonts.Body,
-        }
-        for _, inst in ipairs(self._screenGui:GetDescendants()) do
-            if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
-                local newFont = fontMap[tostring(inst.Font)]
-                if newFont then
-                    local ok, err = pcall(function() inst.Font = newFont end)
-                    if not ok then
-                        warn("[MobileUILib] SetSkin: couldn't apply a custom font — " .. tostring(err))
+   if skin.Fonts then
+    local fontMap = {
+        [tostring(Enum.Font.GothamBold)] = skin.Fonts.Header,
+        [tostring(Enum.Font.GothamMedium)] = skin.Fonts.Accent,
+        [tostring(Enum.Font.Gotham)] = skin.Fonts.Body,
+    }
+    for _, inst in ipairs(self._screenGui:GetDescendants()) do
+        if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
+            local newFont = fontMap[tostring(inst.Font)]
+            if newFont then
+                local ok, err = pcall(function()
+                    -- If the skin provided a Font object (Font.fromName), assign to FontFace.
+                    if typeof(newFont) == "Font" then
+                        -- FontFace/Font property may not exist on all client builds; pcall to be safe.
+                        local setOk, setErr = pcall(function() inst.FontFace = newFont end)
+                        if not setOk then
+                            -- fallback: if newFont is actually an Enum item (rare), assign to .Font
+                            if typeof(newFont) == "EnumItem" then
+                                inst.Font = newFont
+                            end
+                        end
+                    else
+                        -- Expecting Enum.Font / string / number
+                        inst.Font = newFont
                     end
+                end)
+                if not ok then
+                    warn("[CornUi] SetSkin: couldn't apply a custom font — " .. tostring(err))
                 end
             end
         end
     end
+end
 
     -- 4. Window texture — reuses SetBackground wholesale (tiled, subtle by
     -- default) instead of a second parallel image-overlay system. Only
