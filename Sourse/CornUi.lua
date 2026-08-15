@@ -565,34 +565,59 @@ end
 -- ============================================================
 -- A Skin is a bundle layered on top of the existing Theme system — colors
 -- still come from Themes/RegisterTheme, nothing about color-swapping
--- changes — plus three more independent layers a plain color palette
+-- changes — plus four more independent layers a plain color palette
 -- doesn't touch:
---   Fonts          — custom Font objects (Font.new(...) or Enum.Font)
---   AccentTexture  — a tiled image overlay on accent-colored surfaces
---   WindowTexture  — a tiled image overlay behind the whole window
+--   Fonts               — custom fonts (Font.new(...) for FontFace, or
+--                          Enum.Font as a fallback — SetSkin tries FontFace
+--                          first and falls back automatically)
+--   AccentTexture        — tiled overlay on accent-colored CONTROLS:
+--                          Slider/ProgressBar/Meter fill, Toggle's on-state
+--                          switch. Subtle by default (meant to sit on top
+--                          of a color, not replace it).
+--   SelectedOptionTexture — tiled overlay on the currently-selected Tab
+--                          button specifically. Kept separate from
+--                          AccentTexture on purpose: both may currently
+--                          render in Theme.Accent, but a skin might want a
+--                          different texture (or none) for "this is the
+--                          active choice" vs. "this is a slider/toggle".
+--   WindowBGTexture       — tiled overlay behind the window only, dulled
+--                          (this is what used to be called WindowTexture).
+--   WindowTexture         — tiled overlay across the WHOLE UI: header,
+--                          sidebar, panels, cards — every Background/
+--                          Header/Element/ElementHover/ToggleButton
+--                          surface currently on screen. NOT dulled by
+--                          default — this is meant to visibly reskin the
+--                          chrome, not add a faint watermark behind it.
 --
 --   Library:RegisterSkin("Carbon", {
---       Theme = "Dark",                                 -- or an inline color table, same shape as RegisterTheme
+--       Theme = "Dark",                                  -- or an inline color table, same shape as RegisterTheme
 --       Fonts = {
 --           Header = Font.new("rbxasset://fonts/families/..."),
 --           Body   = Font.new("rbxasset://fonts/families/..."),
 --           Accent = Font.new("rbxasset://fonts/families/..."),
 --       },
 --       AccentTexture = "rbxassetid://...",
+--       SelectedOptionTexture = "rbxassetid://...",
+--       WindowBGTexture = "rbxassetid://...",
+--       WindowBGTextureTransparency = 0.85,               -- optional, default shown (dulled)
 --       WindowTexture = "rbxassetid://...",
---       WindowTextureTransparency = 0.85,               -- optional, this is the default
+--       WindowTextureTransparency = 0.12,                 -- optional, default shown (NOT dulled)
 --   })
 --   Window:SetSkin("Carbon")
 --
--- SCOPE, stated plainly: AccentTexture currently reaches Slider fill,
--- ProgressBar fill, Meter fill, and Toggle's on-state switch (including
--- the three-state Toggle's "on" position) — the surfaces that are
--- permanently or predictably accent-colored. It doesn't yet reach
--- ColorPicker swatches, Dropdown's selected state, or Keybind's button;
--- those can be tagged the same way later. This covers the highest-traffic
--- surfaces first rather than claiming full coverage it doesn't have.
+-- SCOPE, stated plainly: AccentTexture reaches Slider fill, ProgressBar
+-- fill, Meter fill, and Toggle's on-state switch (incl. three-state).
+-- SelectedOptionTexture reaches the active Tab button only — Dropdown's
+-- selected row and RadioGroup's selected option use a text-color change
+-- rather than a background fill, so a texture overlay doesn't apply the
+-- same way there; those would need a different treatment, not this one.
+-- WindowTexture reaches every currently-on-screen surface at the moment
+-- SetSkin runs, via the same "compare against what's on screen right now"
+-- color-match trick SetTheme uses — it does not retroactively tag new
+-- elements created after SetSkin, the same limitation AccentTexture has.
 Library.Skins = {}
 Library._currentAccentTexture = nil
+Library._currentSelectedTexture = nil
 Library._currentSkinName = nil
 
 -- Library:RegisterSkin("Name", skinDef) — see the block comment above for
@@ -605,24 +630,33 @@ function Library:RegisterSkin(name, skinDef)
     Library.Skins[name] = skinDef
 end
 
--- Shared by Window:SetSkin (the initial pass over every accent surface
--- already on screen) and any element whose "accent-colored" state can
--- change live after a skin is applied (Toggle's click handler/Set).
-function Library:_applyAccentOverlay(inst, isAccent)
+-- Generic tiled-overlay applier shared by AccentTexture, SelectedOptionTexture,
+-- and the whole-UI WindowTexture. `overlayName` keeps the three kinds from
+-- colliding on the same instance (an active Tab button, for instance, could
+-- plausibly want both a SelectedOptionTexture AND get swept up in the
+-- whole-UI WindowTexture pass — they need independent overlay children).
+--
+-- ZIndex is deliberately kept LOW (0), not layered above the surface's own
+-- content — a Frame's BackgroundColor3 always renders behind all of its
+-- children regardless of their ZIndex, so an overlay at ZIndex 0 sits
+-- visibly on top of that flat color fill while still staying underneath
+-- any text/knob/icon children (which default to ZIndex 1). This mirrors
+-- the same ZIndex=0 approach Window:SetBackground already uses for exactly
+-- this reason.
+function Library:_applyTiledOverlay(inst, overlayName, on, textureId, transparency)
     if not inst then return end
-    local existing = inst:FindFirstChild("MUI_AccentTexture")
-    local textureId = Library._currentAccentTexture
-    if isAccent and textureId then
+    local existing = inst:FindFirstChild(overlayName)
+    if on and textureId then
         if not existing then
             local overlay = create("ImageLabel", {
-                Name = "MUI_AccentTexture",
+                Name = overlayName,
                 Image = textureId,
                 ScaleType = Enum.ScaleType.Tile,
                 TileSize = UDim2.new(0, 48, 0, 48),
                 BackgroundTransparency = 1,
-                ImageTransparency = 0.25,
+                ImageTransparency = transparency or 0.25,
                 Size = UDim2.new(1, 0, 1, 0),
-                ZIndex = inst.ZIndex + 3,
+                ZIndex = 0,
             })
             overlay:SetAttribute("MUI_NoTheme", true)
             local existingCorner = inst:FindFirstChildOfClass("UICorner")
@@ -632,10 +666,26 @@ function Library:_applyAccentOverlay(inst, isAccent)
                 c.Parent = overlay
             end
             overlay.Parent = inst
+        else
+            existing.Image = textureId
+            existing.ImageTransparency = transparency or existing.ImageTransparency
         end
     elseif existing then
         existing:Destroy()
     end
+end
+
+-- Shared by Window:SetSkin (the initial pass over every accent surface
+-- already on screen) and any element whose "accent-colored" state can
+-- change live after a skin is applied (Toggle's click handler/Set).
+function Library:_applyAccentOverlay(inst, isAccent)
+    Library:_applyTiledOverlay(inst, "MUI_AccentTexture", isAccent, Library._currentAccentTexture, 0.25)
+end
+
+-- Shared by Window:SetSkin (initial pass) and Tab selection (selectTab(),
+-- so switching tabs keeps the overlay on whichever button is active now).
+function Library:_applySelectedOverlay(inst, isSelected)
+    Library:_applyTiledOverlay(inst, "MUI_SelectedTexture", isSelected, Library._currentSelectedTexture, 0.25)
 end
 
 -- ============================================================
@@ -2563,21 +2613,50 @@ function WM:SetSkin(name)
         return
     end
 
-    -- 1. Accent-texture pass FIRST, while Theme.Accent still holds the
-    -- OLD/current value — SetTheme (step 2) only mutates Theme in place at
-    -- the very end of its own run, so this is the same "compare against
-    -- what's still on screen right now" trick SetTheme itself uses for
-    -- colors, just for the one attribute-tagged accent layer.
+    -- 1. Accent + Selected-option texture passes FIRST, while Theme still
+    -- holds the OLD/current values — SetTheme (step 2) only mutates Theme
+    -- in place at the very end of its own run, so this is the same
+    -- "compare against what's still on screen right now" trick SetTheme
+    -- itself uses for colors, just for these two attribute-tagged layers.
     Library._currentAccentTexture = skin.AccentTexture
+    Library._currentSelectedTexture = skin.SelectedOptionTexture
     for _, inst in ipairs(self._screenGui:GetDescendants()) do
-        if inst:IsA("GuiObject") and inst:GetAttribute("MUI_AccentSurface") then
+        if inst:IsA("GuiObject") then
             local ok, bg = pcall(function() return inst.BackgroundColor3 end)
-            local isAccent = ok and tostring(bg) == tostring(Theme.Accent)
-            Library:_applyAccentOverlay(inst, isAccent)
+            local isAccentColored = ok and tostring(bg) == tostring(Theme.Accent)
+
+            if inst:GetAttribute("MUI_AccentSurface") then
+                Library:_applyAccentOverlay(inst, isAccentColored)
+            end
+            if inst:GetAttribute("MUI_SelectedSurface") then
+                Library:_applySelectedOverlay(inst, isAccentColored)
+            end
         end
     end
 
-    -- 2. Colors — delegate entirely to the existing theme machinery so
+    -- 2. Whole-UI texture pass — every currently-on-screen surface whose
+    -- fill is one of the "container" theme colors (header bar, sidebar,
+    -- panels, cards) gets the overlay, NOT just attribute-tagged ones.
+    -- Unlike AccentTexture/SelectedOptionTexture this needs no per-element
+    -- tagging: virtually every Frame in this file is colored directly from
+    -- one of these Theme keys at creation, so a plain color-match already
+    -- catches everything currently visible. Deliberately excludes Accent
+    -- (that's AccentTexture/SelectedOptionTexture's job) and Text/SubText/
+    -- Stroke (texturing a text color or a 1px border isn't meaningful).
+    local SURFACE_KEYS = { "Background", "Header", "Element", "ElementHover", "ToggleButton" }
+    local surfaceColorSet = {}
+    for _, key in ipairs(SURFACE_KEYS) do
+        surfaceColorSet[tostring(Theme[key])] = true
+    end
+    for _, inst in ipairs(self._screenGui:GetDescendants()) do
+        if inst:IsA("GuiObject") and inst.Name ~= "MUI_WindowTexture" then
+            local ok, bg = pcall(function() return inst.BackgroundColor3 end)
+            local isSurface = ok and surfaceColorSet[tostring(bg)]
+            Library:_applyTiledOverlay(inst, "MUI_WindowTexture", isSurface, skin.WindowTexture, skin.WindowTextureTransparency or 0.12)
+        end
+    end
+
+    -- 3. Colors — delegate entirely to the existing theme machinery so
     -- color-swapping behavior doesn't change at all.
     if type(skin.Theme) == "string" then
         self:SetTheme(skin.Theme)
@@ -2586,71 +2665,50 @@ function WM:SetSkin(name)
         self:SetTheme("__skin_" .. name)
     end
 
-    -- 3. Fonts — same reverse-lookup trick SetTheme uses for colors, but
+    -- 4. Fonts — same reverse-lookup trick SetTheme uses for colors, but
     -- keyed on Font instead of Color3. Every label/button/textbox in this
     -- file only ever uses a small handful of Enum.Font values
     -- (Gotham/GothamMedium/GothamBold), so this needs no per-element
-    -- tagging to work.
-   if skin.Fonts then
-    local fontMap = {
-        [tostring(Enum.Font.GothamBold)] = skin.Fonts.Header,
-        [tostring(Enum.Font.GothamMedium)] = skin.Fonts.Accent,
-        [tostring(Enum.Font.Gotham)] = skin.Fonts.Body,
-    }
-
-    for _, inst in ipairs(self._screenGui:GetDescendants()) do
-        if inst:IsA("TextLabel")
-            or inst:IsA("TextButton")
-            or inst:IsA("TextBox") then
-
-            local newFont =
-                fontMap[tostring(inst.Font)]
-
-            if newFont then
-
-                local success, err = pcall(function()
-
-                    -- Custom Font datatype
-                    inst.FontFace = newFont
-
-                end)
-
-                if not success then
-
-                    -- Legacy Enum.Font fallback
-                    local fallbackSuccess =
-                        pcall(function()
-
-                            inst.Font = newFont
-
+    -- tagging to work. Tries FontFace (the modern custom-font datatype)
+    -- first, falls back to legacy Font for values that are plain
+    -- Enum.Font entries rather than Font.new(...) objects.
+    if skin.Fonts then
+        local fontMap = {
+            [tostring(Enum.Font.GothamBold)] = skin.Fonts.Header,
+            [tostring(Enum.Font.GothamMedium)] = skin.Fonts.Accent,
+            [tostring(Enum.Font.Gotham)] = skin.Fonts.Body,
+        }
+        for _, inst in ipairs(self._screenGui:GetDescendants()) do
+            if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
+                local newFont = fontMap[tostring(inst.Font)]
+                if newFont then
+                    local success, err = pcall(function()
+                        inst.FontFace = newFont -- Custom Font datatype
+                    end)
+                    if not success then
+                        local fallbackSuccess = pcall(function()
+                            inst.Font = newFont -- Legacy Enum.Font fallback
                         end)
-
-                    if not fallbackSuccess then
-                        warn(
-                            "[MobileUILib] Failed to apply font to "
-                            .. inst:GetFullName()
-                            .. ": "
-                            .. tostring(err)
-                        )
+                        if not fallbackSuccess then
+                            warn("[MobileUILib] Failed to apply font to " .. inst:GetFullName() .. ": " .. tostring(err))
+                        end
                     end
-
                 end
-
             end
         end
     end
-end
 
-    -- 4. Window texture — reuses SetBackground wholesale (tiled, subtle by
-    -- default) instead of a second parallel image-overlay system. Only
-    -- touches the background if this skin actually specifies one — an
-    -- unrelated background set independently is left alone otherwise.
-    if skin.WindowTexture then
+    -- 5. Window BACKGROUND texture — reuses SetBackground wholesale
+    -- (tiled, dulled by default) instead of a second parallel image-overlay
+    -- system. This is what used to be called WindowTexture. Only touches
+    -- the background if this skin actually specifies one — an unrelated
+    -- background set independently is left alone otherwise.
+    if skin.WindowBGTexture then
         self:SetBackground({
-            Texture = skin.WindowTexture,
+            Texture = skin.WindowBGTexture,
             Type = "Image",
             ScaleType = Enum.ScaleType.Tile,
-            Transparency = skin.WindowTextureTransparency or 0.85,
+            Transparency = skin.WindowBGTextureTransparency or 0.85,
         })
     end
 
@@ -2766,6 +2824,7 @@ function WM:CreateTab(name, config)
         AutoButtonColor = false,
     }, { corner(10) })
     tabButton.Parent = self._tabList
+    tabButton:SetAttribute("MUI_SelectedSurface", true) -- eligible for a Skin's SelectedOptionTexture while this tab is active
 
     local contentRow = create("Frame", {
         Size = UDim2.new(1, 0, 1, 0),
@@ -2850,6 +2909,7 @@ function WM:CreateTab(name, config)
                     stopBreathingGlow(t.glow, t.glowTween)
                     t.glow, t.glowTween = nil, nil
                 end
+                Library:_applySelectedOverlay(t.button, false)
             end
         end
 
@@ -2857,6 +2917,7 @@ function WM:CreateTab(name, config)
         tween(tabLabel, { TextColor3 = Theme.TextOnAccent }, 0.1)
         if iconLabel then tween(iconLabel, { ImageColor3 = Theme.TextOnAccent }, 0.1) end
         tabEntry.glow, tabEntry.glowTween = startBreathingGlow(tabButton, Theme.Accent)
+        Library:_applySelectedOverlay(tabButton, true)
 
         local previousEntry = self._currentPageEntry
         if previousEntry and previousEntry.page ~= page then
