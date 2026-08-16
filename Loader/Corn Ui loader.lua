@@ -20,6 +20,7 @@ end
 
 if game.PlaceId == 136801880565837 or game.PlaceId == 90568084448279 or game.PlaceId == 122446657157717 then
   loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/refs/heads/main/Scripts/Universal%20Aimlock.lua"))()
+  loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/refs/heads/main/Scripts/universal%20ESP.lua")()
 end
 
 if game.PlaceId == 3956818381 then
