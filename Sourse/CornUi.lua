@@ -643,8 +643,25 @@ end
 -- any text/knob/icon children (which default to ZIndex 1). This mirrors
 -- the same ZIndex=0 approach Window:SetBackground already uses for exactly
 -- this reason.
+-- Roblox has no way to make one child "ignore" a UIListLayout/UIGridLayout/
+-- UITableLayout/UIPageLayout on its parent — any child we insert gets
+-- treated as a real list item and pushed into the stack, consuming a full
+-- Size-worth of space. That's exactly what broke the tab sidebar: it's a
+-- ScrollingFrame with BackgroundColor3 = Theme.Header (a WindowTexture
+-- surface match) AND its own UIListLayout + AutomaticCanvasSize — a
+-- 1,0,1,0-sized overlay child shoved every tab button down and forced the
+-- canvas (and its accent-colored scrollbar) to grow to compensate.
+local LAYOUT_CLASSES = { "UIListLayout", "UIGridLayout", "UITableLayout", "UIPageLayout" }
+local function hasChildLayout(inst)
+    for _, className in ipairs(LAYOUT_CLASSES) do
+        if inst:FindFirstChildOfClass(className) then return true end
+    end
+    return false
+end
+
 function Library:_applyTiledOverlay(inst, overlayName, on, textureId, transparency)
     if not inst then return end
+    if hasChildLayout(inst) then return end -- see LAYOUT_CLASSES note above — skip rather than corrupt the layout
     local existing = inst:FindFirstChild(overlayName)
     if on and textureId then
         if not existing then
