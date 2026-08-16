@@ -47,8 +47,8 @@ Library._customElements = {}
 Library._themeHistory = {}
 Library._windowPositions = {}
 
-Library.VERSION = "1.9.3"
-Library.BUILD = "2024.08.07"
+Library.VERSION = "1.9.3d"
+Library.BUILD = "2026.08.16"
 
 -- ============================================================
 -- FLAG MANAGER
