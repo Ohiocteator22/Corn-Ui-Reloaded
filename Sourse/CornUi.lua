@@ -47,8 +47,8 @@ Library._customElements = {}
 Library._themeHistory = {}
 Library._windowPositions = {}
 
-Library.VERSION = "1.9.3d"
-Library.BUILD = "2026.08.16"
+Library.VERSION = "1.9.3"
+Library.BUILD = "2024.08.07"
 
 -- ============================================================
 -- FLAG MANAGER
@@ -2665,12 +2665,23 @@ function WM:SetSkin(name)
     for _, key in ipairs(SURFACE_KEYS) do
         surfaceColorSet[tostring(Theme[key])] = true
     end
+    local windowTextureApplied, windowTextureSkippedLayout = 0, 0
     for _, inst in ipairs(self._screenGui:GetDescendants()) do
         if inst:IsA("GuiObject") and inst.Name ~= "MUI_WindowTexture" then
             local ok, bg = pcall(function() return inst.BackgroundColor3 end)
             local isSurface = ok and surfaceColorSet[tostring(bg)]
+            if isSurface and skin.WindowTexture then
+                if hasChildLayout(inst) then
+                    windowTextureSkippedLayout += 1
+                else
+                    windowTextureApplied += 1
+                end
+            end
             Library:_applyTiledOverlay(inst, "MUI_WindowTexture", isSurface, skin.WindowTexture, skin.WindowTextureTransparency or 0.12)
         end
+    end
+    if skin.WindowTexture then
+        print("[MobileUILib] SetSkin: WindowTexture applied to " .. windowTextureApplied .. " surface(s), skipped " .. windowTextureSkippedLayout .. " (layout-managed)")
     end
 
     -- 3. Colors — delegate entirely to the existing theme machinery so
@@ -3067,9 +3078,24 @@ function TM:CreateSection(name)
         Size = UDim2.new(1, 0, 0, touch and 40 or 30),
         BackgroundColor3 = Theme.Header,
         AutomaticSize = Enum.AutomaticSize.Y,
+    }, { corner(12), stroke() })
+    container.Parent = self._page
+
+    -- Content lives in its own inner wrapper so `container` (the actual
+    -- textured/colored surface) has no UIListLayout as a DIRECT child —
+    -- WindowTexture skips any surface with one (see the note above
+    -- _applyTiledOverlay) to avoid corrupting real layouts, and a Section's
+    -- own UIListLayout for stacking its elements was getting caught by
+    -- that same guard, silently excluding almost every panel in the UI.
+    -- `container`'s AutomaticSize.Y still grows correctly to match this
+    -- inner Frame's own AutomaticSize.Y — Roblox measures a parent's
+    -- AutomaticSize from its children's resolved extents regardless of
+    -- how those children compute their own size.
+    local content = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 0),
+        BackgroundTransparency = 1,
+        AutomaticSize = Enum.AutomaticSize.Y,
     }, {
-        corner(12),
-        stroke(),
         create("UIListLayout", {
             Padding = UDim.new(0, compact and 4 or 6),
             SortOrder = Enum.SortOrder.LayoutOrder,
@@ -3081,7 +3107,7 @@ function TM:CreateSection(name)
             PaddingBottom = UDim.new(0, compact and 4 or 8),
         }),
     })
-    container.Parent = self._page
+    content.Parent = container
 
     create("TextLabel", {
         Text = name,
@@ -3092,10 +3118,10 @@ function TM:CreateSection(name)
         Size = UDim2.new(1, 0, 0, touch and (compact and 16 or 20) or (compact and 12 or 16)),
         TextXAlignment = Enum.TextXAlignment.Left,
         LayoutOrder = 0,
-    }).Parent = container
+    }).Parent = content
 
     local Section = setmetatable({
-        _page = container,
+        _page = content,
         _touch = touch,
         _window = self._window,
         _screenGui = self._screenGui,
@@ -4502,9 +4528,18 @@ function TM:CreateCard(config)
         Size = UDim2.new(1, 0, 0, touch and (compact and 32 or 40) or (compact and 24 or 30)),
         BackgroundColor3 = Theme.Element,
         AutomaticSize = Enum.AutomaticSize.Y,
+    }, { corner(14), stroke() })
+    card.Parent = self._page
+    setSearchMeta(card, config, "Card")
+
+    -- Same reasoning as CreateSection: content lives in its own inner
+    -- wrapper so `card` (the textured/colored surface) has no UIListLayout
+    -- as a direct child, keeping it eligible for WindowTexture.
+    local content = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 0),
+        BackgroundTransparency = 1,
+        AutomaticSize = Enum.AutomaticSize.Y,
     }, {
-        corner(14),
-        stroke(),
         create("UIListLayout", {
             Padding = UDim.new(0, compact and 4 or 6),
             SortOrder = Enum.SortOrder.LayoutOrder,
@@ -4516,8 +4551,7 @@ function TM:CreateCard(config)
             PaddingBottom = UDim.new(0, compact and 6 or 10),
         }),
     })
-    card.Parent = self._page
-    setSearchMeta(card, config, "Card")
+    content.Parent = card
 
     if config.Title then
         create("TextLabel", {
@@ -4529,7 +4563,7 @@ function TM:CreateCard(config)
             Size = UDim2.new(1, 0, 0, touch and (compact and 18 or 22) or (compact and 14 or 18)),
             TextXAlignment = Enum.TextXAlignment.Left,
             LayoutOrder = 0,
-        }).Parent = card
+        }).Parent = content
     end
 
     if config.Subtitle then
@@ -4544,11 +4578,11 @@ function TM:CreateCard(config)
             TextWrapped = true,
             TextXAlignment = Enum.TextXAlignment.Left,
             LayoutOrder = 1,
-        }).Parent = card
+        }).Parent = content
     end
 
     local Card = setmetatable({
-        _page = card,
+        _page = content,
         _touch = touch,
         _window = self._window,
         _screenGui = self._screenGui,
