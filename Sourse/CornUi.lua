@@ -597,7 +597,9 @@ end
 --           Accent = Font.new("rbxasset://fonts/families/..."),
 --       },
 --       AccentTexture = "rbxassetid://...",
+--       AccentTextureTransparency = 0.25,                 -- optional, default shown
 --       SelectedOptionTexture = "rbxassetid://...",
+--       SelectedOptionTextureTransparency = 0.25,         -- optional, default shown
 --       WindowBGTexture = "rbxassetid://...",
 --       WindowBGTextureTransparency = 0.85,               -- optional, default shown (dulled)
 --       WindowTexture = "rbxassetid://...",
@@ -692,17 +694,20 @@ function Library:_applyTiledOverlay(inst, overlayName, on, textureId, transparen
     end
 end
 
+Library._currentAccentTextureTransparency = 0.25
+Library._currentSelectedTextureTransparency = 0.25
+
 -- Shared by Window:SetSkin (the initial pass over every accent surface
 -- already on screen) and any element whose "accent-colored" state can
 -- change live after a skin is applied (Toggle's click handler/Set).
 function Library:_applyAccentOverlay(inst, isAccent)
-    Library:_applyTiledOverlay(inst, "MUI_AccentTexture", isAccent, Library._currentAccentTexture, 0.25)
+    Library:_applyTiledOverlay(inst, "MUI_AccentTexture", isAccent, Library._currentAccentTexture, Library._currentAccentTextureTransparency)
 end
 
 -- Shared by Window:SetSkin (initial pass) and Tab selection (selectTab(),
 -- so switching tabs keeps the overlay on whichever button is active now).
 function Library:_applySelectedOverlay(inst, isSelected)
-    Library:_applyTiledOverlay(inst, "MUI_SelectedTexture", isSelected, Library._currentSelectedTexture, 0.25)
+    Library:_applyTiledOverlay(inst, "MUI_SelectedTexture", isSelected, Library._currentSelectedTexture, Library._currentSelectedTextureTransparency)
 end
 
 -- ============================================================
@@ -2637,6 +2642,8 @@ function WM:SetSkin(name)
     -- itself uses for colors, just for these two attribute-tagged layers.
     Library._currentAccentTexture = skin.AccentTexture
     Library._currentSelectedTexture = skin.SelectedOptionTexture
+    Library._currentAccentTextureTransparency = skin.AccentTextureTransparency or 0.25
+    Library._currentSelectedTextureTransparency = skin.SelectedOptionTextureTransparency or 0.25
     for _, inst in ipairs(self._screenGui:GetDescendants()) do
         if inst:IsA("GuiObject") then
             local ok, bg = pcall(function() return inst.BackgroundColor3 end)
