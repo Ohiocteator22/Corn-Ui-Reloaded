@@ -174,6 +174,7 @@ function Library:SaveConfig(name)
     local data = {
         Flags = {},
         Theme = Library._currentThemeName or "Dark",
+        Skin = Library._currentSkinName,
         Version = Library.VERSION,
         Timestamp = os.time()
     }
@@ -219,7 +220,9 @@ function Library:LoadConfig(name, window)
         return false
     end
 
-    if data.Theme and window then
+    if data.Skin and window and Library.Skins[data.Skin] then
+        pcall(function() window:SetSkin(data.Skin) end)
+    elseif data.Theme and window then
         pcall(function() window:SetTheme(data.Theme) end)
     end
 
@@ -272,6 +275,7 @@ function Library:ExportConfig(name)
     local data = {
         Flags = {},
         Theme = Library._currentThemeName or "Dark",
+        Skin = Library._currentSkinName,
         Version = Library.VERSION,
         Timestamp = os.time()
     }
@@ -294,7 +298,9 @@ function Library:ImportConfig(jsonText, window)
         return false
     end
 
-    if data.Theme and window then
+    if data.Skin and window and Library.Skins[data.Skin] then
+        pcall(function() window:SetSkin(data.Skin) end)
+    elseif data.Theme and window then
         pcall(function() window:SetTheme(data.Theme) end)
     end
 
@@ -552,6 +558,156 @@ local function tween(inst, props, duration)
     end
     local adjustedDuration = (duration or 0.15) / animationSpeed
     TweenService:Create(inst, TweenInfo.new(adjustedDuration, Enum.EasingStyle.Quad), props):Play()
+end
+
+-- ============================================================
+-- SKIN SYSTEM
+-- ============================================================
+-- A Skin is a bundle layered on top of the existing Theme system — colors
+-- still come from Themes/RegisterTheme, nothing about color-swapping
+-- changes — plus four more independent layers a plain color palette
+-- doesn't touch:
+--   Fonts               — custom fonts (Font.new(...) for FontFace, or
+--                          Enum.Font as a fallback — SetSkin tries FontFace
+--                          first and falls back automatically)
+--   AccentTexture        — tiled overlay on accent-colored CONTROLS:
+--                          Slider/ProgressBar/Meter fill, Toggle's on-state
+--                          switch. Subtle by default (meant to sit on top
+--                          of a color, not replace it).
+--   SelectedOptionTexture — tiled overlay on the currently-selected Tab
+--                          button specifically. Kept separate from
+--                          AccentTexture on purpose: both may currently
+--                          render in Theme.Accent, but a skin might want a
+--                          different texture (or none) for "this is the
+--                          active choice" vs. "this is a slider/toggle".
+--   WindowBGTexture       — tiled overlay behind the window only, dulled
+--                          (this is what used to be called WindowTexture).
+--   WindowTexture         — tiled overlay across the WHOLE UI: header,
+--                          sidebar, panels, cards — every Background/
+--                          Header/Element/ElementHover/ToggleButton
+--                          surface currently on screen. NOT dulled by
+--                          default — this is meant to visibly reskin the
+--                          chrome, not add a faint watermark behind it.
+--
+--   Library:RegisterSkin("Carbon", {
+--       Theme = "Dark",                                  -- or an inline color table, same shape as RegisterTheme
+--       Fonts = {
+--           Header = Font.new("rbxasset://fonts/families/..."),
+--           Body   = Font.new("rbxasset://fonts/families/..."),
+--           Accent = Font.new("rbxasset://fonts/families/..."),
+--       },
+--       AccentTexture = "rbxassetid://...",
+--       AccentTextureTransparency = 0.25,                 -- optional, default shown
+--       SelectedOptionTexture = "rbxassetid://...",
+--       SelectedOptionTextureTransparency = 0.25,         -- optional, default shown
+--       WindowBGTexture = "rbxassetid://...",
+--       WindowBGTextureTransparency = 0.85,               -- optional, default shown (dulled)
+--       WindowTexture = "rbxassetid://...",
+--       WindowTextureTransparency = 0.12,                 -- optional, default shown (NOT dulled)
+--   })
+--   Window:SetSkin("Carbon")
+--
+-- SCOPE, stated plainly: AccentTexture reaches Slider fill, ProgressBar
+-- fill, Meter fill, and Toggle's on-state switch (incl. three-state).
+-- SelectedOptionTexture reaches the active Tab button only — Dropdown's
+-- selected row and RadioGroup's selected option use a text-color change
+-- rather than a background fill, so a texture overlay doesn't apply the
+-- same way there; those would need a different treatment, not this one.
+-- WindowTexture reaches every currently-on-screen surface at the moment
+-- SetSkin runs, via the same "compare against what's on screen right now"
+-- color-match trick SetTheme uses — it does not retroactively tag new
+-- elements created after SetSkin, the same limitation AccentTexture has.
+Library.Skins = {}
+Library._currentAccentTexture = nil
+Library._currentSelectedTexture = nil
+Library._currentSkinName = nil
+
+-- Library:RegisterSkin("Name", skinDef) — see the block comment above for
+-- skinDef's shape.
+function Library:RegisterSkin(name, skinDef)
+    if type(name) ~= "string" or type(skinDef) ~= "table" then
+        warn("[MobileUILib] RegisterSkin requires a name string and a skin definition table")
+        return
+    end
+    Library.Skins[name] = skinDef
+end
+
+-- Generic tiled-overlay applier shared by AccentTexture, SelectedOptionTexture,
+-- and the whole-UI WindowTexture. `overlayName` keeps the three kinds from
+-- colliding on the same instance (an active Tab button, for instance, could
+-- plausibly want both a SelectedOptionTexture AND get swept up in the
+-- whole-UI WindowTexture pass — they need independent overlay children).
+--
+-- ZIndex is deliberately kept LOW (0), not layered above the surface's own
+-- content — a Frame's BackgroundColor3 always renders behind all of its
+-- children regardless of their ZIndex, so an overlay at ZIndex 0 sits
+-- visibly on top of that flat color fill while still staying underneath
+-- any text/knob/icon children (which default to ZIndex 1). This mirrors
+-- the same ZIndex=0 approach Window:SetBackground already uses for exactly
+-- this reason.
+-- Roblox has no way to make one child "ignore" a UIListLayout/UIGridLayout/
+-- UITableLayout/UIPageLayout on its parent — any child we insert gets
+-- treated as a real list item and pushed into the stack, consuming a full
+-- Size-worth of space. That's exactly what broke the tab sidebar: it's a
+-- ScrollingFrame with BackgroundColor3 = Theme.Header (a WindowTexture
+-- surface match) AND its own UIListLayout + AutomaticCanvasSize — a
+-- 1,0,1,0-sized overlay child shoved every tab button down and forced the
+-- canvas (and its accent-colored scrollbar) to grow to compensate.
+local LAYOUT_CLASSES = { "UIListLayout", "UIGridLayout", "UITableLayout", "UIPageLayout" }
+local function hasChildLayout(inst)
+    for _, className in ipairs(LAYOUT_CLASSES) do
+        if inst:FindFirstChildOfClass(className) then return true end
+    end
+    return false
+end
+
+function Library:_applyTiledOverlay(inst, overlayName, on, textureId, transparency)
+    if not inst then return end
+    if hasChildLayout(inst) then return end -- see LAYOUT_CLASSES note above — skip rather than corrupt the layout
+    local existing = inst:FindFirstChild(overlayName)
+    if on and textureId then
+        if not existing then
+            local overlay = create("ImageLabel", {
+                Name = overlayName,
+                Image = textureId,
+                ScaleType = Enum.ScaleType.Tile,
+                TileSize = UDim2.new(0, 48, 0, 48),
+                BackgroundTransparency = 1,
+                ImageTransparency = transparency or 0.25,
+                Size = UDim2.new(1, 0, 1, 0),
+                ZIndex = 0,
+            })
+            overlay:SetAttribute("MUI_NoTheme", true)
+            local existingCorner = inst:FindFirstChildOfClass("UICorner")
+            if existingCorner then
+                local c = Instance.new("UICorner")
+                c.CornerRadius = existingCorner.CornerRadius
+                c.Parent = overlay
+            end
+            overlay.Parent = inst
+        else
+            existing.Image = textureId
+            existing.ImageTransparency = transparency or existing.ImageTransparency
+        end
+    elseif existing then
+        existing:Destroy()
+    end
+end
+
+Library._currentAccentTextureTransparency = 0.25
+Library._currentSelectedTextureTransparency = 0.25
+
+-- Shared by Window:SetSkin (the initial pass over every accent surface
+-- already on screen) and any element whose "accent-colored" state can
+-- change live after a skin is applied (Toggle's click handler/Set).
+function Library:_applyAccentOverlay(inst, isAccent)
+    Library:_applyTiledOverlay(inst, "MUI_AccentTexture", isAccent, Library._currentAccentTexture, Library._currentAccentTextureTransparency)
+end
+
+-- Shared by Window:SetSkin (initial pass) and Tab selection (selectTab(),
+-- so switching tabs keeps the overlay on whichever button is active now).
+function Library:_applySelectedOverlay(inst, isSelected)
+    Library:_applyTiledOverlay(inst, "MUI_SelectedTexture", isSelected, Library._currentSelectedTexture, Library._currentSelectedTextureTransparency)
 end
 
 -- ============================================================
@@ -2444,7 +2600,8 @@ function WM:SetBackground(input)
         bg = create("ImageLabel", {
             Name = "MUI_Background",
             Image = texture,
-            ScaleType = Enum.ScaleType.Crop,
+            ScaleType = config.ScaleType or Enum.ScaleType.Crop,
+            TileSize = config.TileSize or UDim2.new(0, 128, 0, 128),
             ImageTransparency = config.Transparency or config.ImageTransparency or 0,
             Size = UDim2.new(1, 0, 1, 0),
             BackgroundTransparency = 1,
@@ -2463,6 +2620,134 @@ function WM:ClearBackground()
         self._background:Destroy()
         self._background = nil
     end
+end
+
+-- ============================================================
+-- WINDOW: SET SKIN
+-- ============================================================
+-- Applies a Skin registered via Library:RegisterSkin. See the "SKIN
+-- SYSTEM" comment block near the top of the file for the full shape and
+-- the stated scope of what AccentTexture currently reaches.
+function WM:SetSkin(name)
+    local skin = Library.Skins[name]
+    if not skin then
+        warn("[MobileUILib] SetSkin: no skin registered as '" .. tostring(name) .. "'")
+        return
+    end
+
+    -- 1. Accent + Selected-option texture passes FIRST, while Theme still
+    -- holds the OLD/current values — SetTheme (step 2) only mutates Theme
+    -- in place at the very end of its own run, so this is the same
+    -- "compare against what's still on screen right now" trick SetTheme
+    -- itself uses for colors, just for these two attribute-tagged layers.
+    Library._currentAccentTexture = skin.AccentTexture
+    Library._currentSelectedTexture = skin.SelectedOptionTexture
+    Library._currentAccentTextureTransparency = skin.AccentTextureTransparency or 0.25
+    Library._currentSelectedTextureTransparency = skin.SelectedOptionTextureTransparency or 0.25
+    for _, inst in ipairs(self._screenGui:GetDescendants()) do
+        if inst:IsA("GuiObject") then
+            local ok, bg = pcall(function() return inst.BackgroundColor3 end)
+            local isAccentColored = ok and tostring(bg) == tostring(Theme.Accent)
+
+            if inst:GetAttribute("MUI_AccentSurface") then
+                Library:_applyAccentOverlay(inst, isAccentColored)
+            end
+            if inst:GetAttribute("MUI_SelectedSurface") then
+                Library:_applySelectedOverlay(inst, isAccentColored)
+            end
+        end
+    end
+
+    -- 2. Whole-UI texture pass — every currently-on-screen surface whose
+    -- fill is one of the "container" theme colors (header bar, sidebar,
+    -- panels, cards) gets the overlay, NOT just attribute-tagged ones.
+    -- Unlike AccentTexture/SelectedOptionTexture this needs no per-element
+    -- tagging: virtually every Frame in this file is colored directly from
+    -- one of these Theme keys at creation, so a plain color-match already
+    -- catches everything currently visible. Deliberately excludes Accent
+    -- (that's AccentTexture/SelectedOptionTexture's job) and Text/SubText/
+    -- Stroke (texturing a text color or a 1px border isn't meaningful).
+    local SURFACE_KEYS = { "Background", "Header", "Element", "ElementHover", "ToggleButton" }
+    local surfaceColorSet = {}
+    for _, key in ipairs(SURFACE_KEYS) do
+        surfaceColorSet[tostring(Theme[key])] = true
+    end
+    local windowTextureApplied, windowTextureSkippedLayout = 0, 0
+    for _, inst in ipairs(self._screenGui:GetDescendants()) do
+        if inst:IsA("GuiObject") and inst.Name ~= "MUI_WindowTexture" then
+            local ok, bg = pcall(function() return inst.BackgroundColor3 end)
+            local isSurface = ok and surfaceColorSet[tostring(bg)]
+            if isSurface and skin.WindowTexture then
+                if hasChildLayout(inst) then
+                    windowTextureSkippedLayout += 1
+                else
+                    windowTextureApplied += 1
+                end
+            end
+            Library:_applyTiledOverlay(inst, "MUI_WindowTexture", isSurface, skin.WindowTexture, skin.WindowTextureTransparency or 0.12)
+        end
+    end
+    if skin.WindowTexture then
+        print("[MobileUILib] SetSkin: WindowTexture applied to " .. windowTextureApplied .. " surface(s), skipped " .. windowTextureSkippedLayout .. " (layout-managed)")
+    end
+
+    -- 3. Colors — delegate entirely to the existing theme machinery so
+    -- color-swapping behavior doesn't change at all.
+    if type(skin.Theme) == "string" then
+        self:SetTheme(skin.Theme)
+    elseif type(skin.Theme) == "table" then
+        Library:RegisterTheme("__skin_" .. name, skin.Theme)
+        self:SetTheme("__skin_" .. name)
+    end
+
+    -- 4. Fonts — same reverse-lookup trick SetTheme uses for colors, but
+    -- keyed on Font instead of Color3. Every label/button/textbox in this
+    -- file only ever uses a small handful of Enum.Font values
+    -- (Gotham/GothamMedium/GothamBold), so this needs no per-element
+    -- tagging to work. Tries FontFace (the modern custom-font datatype)
+    -- first, falls back to legacy Font for values that are plain
+    -- Enum.Font entries rather than Font.new(...) objects.
+    if skin.Fonts then
+        local fontMap = {
+            [tostring(Enum.Font.GothamBold)] = skin.Fonts.Header,
+            [tostring(Enum.Font.GothamMedium)] = skin.Fonts.Accent,
+            [tostring(Enum.Font.Gotham)] = skin.Fonts.Body,
+        }
+        for _, inst in ipairs(self._screenGui:GetDescendants()) do
+            if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
+                local newFont = fontMap[tostring(inst.Font)]
+                if newFont then
+                    local success, err = pcall(function()
+                        inst.FontFace = newFont -- Custom Font datatype
+                    end)
+                    if not success then
+                        local fallbackSuccess = pcall(function()
+                            inst.Font = newFont -- Legacy Enum.Font fallback
+                        end)
+                        if not fallbackSuccess then
+                            warn("[MobileUILib] Failed to apply font to " .. inst:GetFullName() .. ": " .. tostring(err))
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- 5. Window BACKGROUND texture — reuses SetBackground wholesale
+    -- (tiled, dulled by default) instead of a second parallel image-overlay
+    -- system. This is what used to be called WindowTexture. Only touches
+    -- the background if this skin actually specifies one — an unrelated
+    -- background set independently is left alone otherwise.
+    if skin.WindowBGTexture then
+        self:SetBackground({
+            Texture = skin.WindowBGTexture,
+            Type = "Image",
+            ScaleType = Enum.ScaleType.Tile,
+            Transparency = skin.WindowBGTextureTransparency or 0.85,
+        })
+    end
+
+    Library._currentSkinName = name
 end
 
 -- ============================================================
@@ -2574,6 +2859,7 @@ function WM:CreateTab(name, config)
         AutoButtonColor = false,
     }, { corner(10) })
     tabButton.Parent = self._tabList
+    tabButton:SetAttribute("MUI_SelectedSurface", true) -- eligible for a Skin's SelectedOptionTexture while this tab is active
 
     local contentRow = create("Frame", {
         Size = UDim2.new(1, 0, 1, 0),
@@ -2658,6 +2944,7 @@ function WM:CreateTab(name, config)
                     stopBreathingGlow(t.glow, t.glowTween)
                     t.glow, t.glowTween = nil, nil
                 end
+                Library:_applySelectedOverlay(t.button, false)
             end
         end
 
@@ -2665,6 +2952,7 @@ function WM:CreateTab(name, config)
         tween(tabLabel, { TextColor3 = Theme.TextOnAccent }, 0.1)
         if iconLabel then tween(iconLabel, { ImageColor3 = Theme.TextOnAccent }, 0.1) end
         tabEntry.glow, tabEntry.glowTween = startBreathingGlow(tabButton, Theme.Accent)
+        Library:_applySelectedOverlay(tabButton, true)
 
         local previousEntry = self._currentPageEntry
         if previousEntry and previousEntry.page ~= page then
@@ -2797,9 +3085,24 @@ function TM:CreateSection(name)
         Size = UDim2.new(1, 0, 0, touch and 40 or 30),
         BackgroundColor3 = Theme.Header,
         AutomaticSize = Enum.AutomaticSize.Y,
+    }, { corner(12), stroke() })
+    container.Parent = self._page
+
+    -- Content lives in its own inner wrapper so `container` (the actual
+    -- textured/colored surface) has no UIListLayout as a DIRECT child —
+    -- WindowTexture skips any surface with one (see the note above
+    -- _applyTiledOverlay) to avoid corrupting real layouts, and a Section's
+    -- own UIListLayout for stacking its elements was getting caught by
+    -- that same guard, silently excluding almost every panel in the UI.
+    -- `container`'s AutomaticSize.Y still grows correctly to match this
+    -- inner Frame's own AutomaticSize.Y — Roblox measures a parent's
+    -- AutomaticSize from its children's resolved extents regardless of
+    -- how those children compute their own size.
+    local content = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 0),
+        BackgroundTransparency = 1,
+        AutomaticSize = Enum.AutomaticSize.Y,
     }, {
-        corner(12),
-        stroke(),
         create("UIListLayout", {
             Padding = UDim.new(0, compact and 4 or 6),
             SortOrder = Enum.SortOrder.LayoutOrder,
@@ -2811,7 +3114,7 @@ function TM:CreateSection(name)
             PaddingBottom = UDim.new(0, compact and 4 or 8),
         }),
     })
-    container.Parent = self._page
+    content.Parent = container
 
     create("TextLabel", {
         Text = name,
@@ -2822,10 +3125,10 @@ function TM:CreateSection(name)
         Size = UDim2.new(1, 0, 0, touch and (compact and 16 or 20) or (compact and 12 or 16)),
         TextXAlignment = Enum.TextXAlignment.Left,
         LayoutOrder = 0,
-    }).Parent = container
+    }).Parent = content
 
     local Section = setmetatable({
-        _page = container,
+        _page = content,
         _touch = touch,
         _window = self._window,
         _screenGui = self._screenGui,
@@ -2953,6 +3256,8 @@ function TM:CreateToggle(config)
         BackgroundColor3 = threeState and Color3.fromRGB(100, 100, 100) or (state and Theme.Accent or Color3.fromRGB(60, 60, 68)),
     }, { corner(18) })
     switchBg.Parent = holder
+    switchBg:SetAttribute("MUI_AccentSurface", true) -- eligible for a Skin's AccentTexture whenever it's actually accent-colored
+    Library:_applyAccentOverlay(switchBg, switchBg.BackgroundColor3 == Theme.Accent)
 
     local knob = create("Frame", {
         Size = UDim2.new(0, touch and (compact and 18 or 22) or (compact and 14 or 16), 0, touch and (compact and 18 or 22) or (compact and 14 or 16)),
@@ -3009,6 +3314,7 @@ function TM:CreateToggle(config)
             switchBg.BackgroundColor3 = state and Theme.Accent or Color3.fromRGB(60, 60, 68)
             knob.Position = state and UDim2.new(1, -((touch and (compact and 18 or 22) or (compact and 14 or 16)) + 3), 0.5, 0) or UDim2.new(0, 3, 0.5, 0)
         end
+        Library:_applyAccentOverlay(switchBg, switchBg.BackgroundColor3 == Theme.Accent)
 
         if config.Flag then Library:SetFlag(config.Flag, state) end
         playInteractionSound("toggle")
@@ -3080,6 +3386,8 @@ function TM:CreateSlider(config)
         BackgroundColor3 = Theme.Accent,
     }, { corner(10) })
     fill.Parent = track
+    fill:SetAttribute("MUI_AccentSurface", true) -- eligible for a Skin's AccentTexture; always accent-colored
+    Library:_applyAccentOverlay(fill, true)
 
     local hitArea = create("TextButton", {
         Text = "",
@@ -4227,9 +4535,18 @@ function TM:CreateCard(config)
         Size = UDim2.new(1, 0, 0, touch and (compact and 32 or 40) or (compact and 24 or 30)),
         BackgroundColor3 = Theme.Element,
         AutomaticSize = Enum.AutomaticSize.Y,
+    }, { corner(14), stroke() })
+    card.Parent = self._page
+    setSearchMeta(card, config, "Card")
+
+    -- Same reasoning as CreateSection: content lives in its own inner
+    -- wrapper so `card` (the textured/colored surface) has no UIListLayout
+    -- as a direct child, keeping it eligible for WindowTexture.
+    local content = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 0),
+        BackgroundTransparency = 1,
+        AutomaticSize = Enum.AutomaticSize.Y,
     }, {
-        corner(14),
-        stroke(),
         create("UIListLayout", {
             Padding = UDim.new(0, compact and 4 or 6),
             SortOrder = Enum.SortOrder.LayoutOrder,
@@ -4241,8 +4558,7 @@ function TM:CreateCard(config)
             PaddingBottom = UDim.new(0, compact and 6 or 10),
         }),
     })
-    card.Parent = self._page
-    setSearchMeta(card, config, "Card")
+    content.Parent = card
 
     if config.Title then
         create("TextLabel", {
@@ -4254,7 +4570,7 @@ function TM:CreateCard(config)
             Size = UDim2.new(1, 0, 0, touch and (compact and 18 or 22) or (compact and 14 or 18)),
             TextXAlignment = Enum.TextXAlignment.Left,
             LayoutOrder = 0,
-        }).Parent = card
+        }).Parent = content
     end
 
     if config.Subtitle then
@@ -4269,11 +4585,11 @@ function TM:CreateCard(config)
             TextWrapped = true,
             TextXAlignment = Enum.TextXAlignment.Left,
             LayoutOrder = 1,
-        }).Parent = card
+        }).Parent = content
     end
 
     local Card = setmetatable({
-        _page = card,
+        _page = content,
         _touch = touch,
         _window = self._window,
         _screenGui = self._screenGui,
@@ -4456,6 +4772,8 @@ function TM:CreateProgressBar(config)
         BackgroundColor3 = Theme.Accent,
     }, { corner(8) })
     fill.Parent = track
+    fill:SetAttribute("MUI_AccentSurface", true) -- eligible for a Skin's AccentTexture; always accent-colored
+    Library:_applyAccentOverlay(fill, true)
 
     local function render(v, animate)
         v = math.clamp(v, min, max)
@@ -4540,6 +4858,8 @@ function TM:CreateMeter(config)
         BackgroundColor3 = color,
     }, { corner(8) })
     fill.Parent = track
+    fill:SetAttribute("MUI_AccentSurface", true) -- eligible for a Skin's AccentTexture whenever its color happens to equal Theme.Accent
+    Library:_applyAccentOverlay(fill, color == Theme.Accent)
 
     local function render(v)
         v = math.clamp(v, min, max)
@@ -4563,6 +4883,7 @@ function TM:CreateMeter(config)
         SetColor = function(_, newColor)
             color = newColor
             fill.BackgroundColor3 = color
+            Library:_applyAccentOverlay(fill, color == Theme.Accent)
         end,
     }
     if config.Flag then
@@ -5345,6 +5666,16 @@ function Library:_makePluginContext(window)
 
         RegisterTheme = function(_, name, themeTable)
             self_:RegisterTheme(name, themeTable)
+        end,
+        RegisterSkin = function(_, name, skinDef)
+            self_:RegisterSkin(name, skinDef)
+        end,
+        SetSkin = function(_, name)
+            if not window then
+                warn("[MobileUILib] SetSkin needs a Window — pass one to LoadPlugin/LoadPlugins")
+                return
+            end
+            window:SetSkin(name)
         end,
         RegisterElement = function(_, name, constructor)
             self_:RegisterElement(name, constructor)
