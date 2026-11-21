@@ -1,28 +1,4 @@
---[[
-    CornUi v2.2 — Example.lua
-    A runnable tour of the library. Drop this in your executor after loading
-    CornUi, or read it as the canonical usage reference.
-
-    The v1.9.3 API is unchanged: Library:CreateWindow, window:CreateTab,
-    tab:CreateSection, and every Create___ element, with Name/Content props.
-    Everything below that starts at the "v2 additions" banner is optional new
-    stuff layered on top (Stepper, Cycle, Plugins, Host, Statusbar, palette).
-
-    local CornUi = loadstring(game:HttpGet(
-        "https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/main/Loader.lua"
-    ))()
-    loadstring(game:HttpGet(".../Example.lua"))()  -- or paste the body
-]]
-
--- Weak device? Uncomment:
--- Library.SetQuality("Low")
-
-------------------------------------------------------------------
--- Window shell (v1 API: CreateWindow / CreateTab / CreateSection)
-------------------------------------------------------------------
-
-local Library = CornUi
-
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/main/Loader.lua"))()
 local window = Library:CreateWindow({
     Name = "CornUi Showcase",
     Size = UDim2.fromOffset(540, 380),
@@ -284,16 +260,9 @@ subSection:CreateButton({
 
 -- 2) Loadstring sub-UI: the button fetches + runs a separate UI script.
 --    (Point this at any CornUi-based script — it calls CreateWindow itself.)
-subSection:CreateButton({
-    Name = "Run remote sub-UI",
-    Loadstring = "https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/main/SubUI.lua",
-})
 
 -- 3) Inline code variant: same pipeline, no HTTP round-trip.
-subSection:CreateButton({
-    Name = "Run inline snippet",
-    Loadstring = 'print("[Example] inline loadstring ran")',
-})
+
 
 ------------------------------------------------------------------
 -- Servers & device (v2 additions: Host integration)
