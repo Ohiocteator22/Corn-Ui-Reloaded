@@ -1,172 +1,166 @@
 --[[
-    CornUi v2.0 — Elements/Toggle.lua
-    Registers Section:CreateToggle(props).
+    CreateToggle (incl. three-state) — verbatim v1.9.4d.
 
-    props = {
-        Title = "Toggle Name",
-        Description = "Optional second line", -- muted, wrapped
-        Flag  = "MyToggleFlag",   -- required, key into Flags
-        Default = false,
-        Callback = function(value) end,
-    }
-
-    Perf note: the per-click visual update reads the theme's current colors
-    directly instead of re-running Theme.Apply (which rebinds + repaints).
-    Track stays bound to Frame/"Default" for theme-switch repaints; an
-    OnChanged hook resyncs enabled tracks after a switch.
+    The Lua below is the v1.9.4d source, verbatim, split out of the original
+    monolith. Only the prelude (binding the monolith's file-local upvalues to
+    the module table) and the trailing module export are ours; the bodies are
+    byte-identical to upload/CornUi.lua lines 3208-3340. The window chrome,
+    intro, stacking and every element behave exactly as v1.9.4d shipped.
 ]]
 
+-- CornUi v1.9.4d (modular) — Elements/Toggle.lua
 return function(Modules)
-
+    -- Verbatim-body prelude (the only non-v1.9.4d code in this file): binds
+    -- the monolith's file-local upvalues to the module system. The loader's
+    -- shared table IS the facade, so `Library.X` below reads exactly like
+    -- the v1.9.4d source; every extracted body is byte-identical to it.
+    local Library = Modules
     local Render = Modules.Render
-    local Flags = Modules.Flags
-    local Theme = Modules.Theme
-    local Section = Modules.Window.Section
+    local Theme = Modules.Theme.Theme
+    local TM = Modules.TabMethods
+    local UserInputService = Render.UserInputService
+    local TweenService = Render.TweenService
+    local RunService = Render.RunService
+    local create = Render.create
+    local corner = Render.corner
+    local setSearchMeta = Render.setSearchMeta
+    local stroke = Render.stroke
+    local tween = Render.tween
+    local playInteractionSound = Render.playInteractionSound
+    local ripple = Render.ripple
+    local shiftZIndex = Render.shiftZIndex
 
-    local Toggle = {}
-    Toggle.__index = Toggle
+-- ============================================================
+-- TOGGLE (with Three-State)
+-- ============================================================
 
-    local TweenService = game:GetService("TweenService")
-    local SLIDE_INFO = TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+function TM:CreateToggle(config)
+    config = config or {}
+    local touch = self._touch
+    local compact = Library.Flags.CompactMode
+    local threeState = config.ThreeState or false
 
-    function Toggle.New(section, props)
-        props.Flag = props.Flag or Flags.NextAutoFlag()
+    local states = threeState and {"off", "auto", "on"} or {false, true}
+    local stateIndex = 1
+    local state = config.Default or (threeState and "auto" or false)
 
-        local self = setmetatable({}, Toggle)
-        self.Flag = props.Flag
+    if threeState then
+        if state == "on" then stateIndex = 3
+        elseif state == "auto" then stateIndex = 2
+        else stateIndex = 1 end
+    else
+        if state then stateIndex = 2 else stateIndex = 1 end
+    end
 
-        local row = Render.New("Frame", {
-            Name = "Toggle_" .. props.Flag,
-            Size = UDim2.new(1, 0, 0, props.Description and Theme.Tokens.RowWithDescription or Theme.Tokens.RowHeight),
-            Theme = false,
-            Parent = section.Frame,
+    local callback = config.Callback or function() end
+
+    local holder = create("Frame", {
+        Size = UDim2.new(1, 0, 0, touch and (compact and 38 or 46) or (compact and 28 or 34)),
+        BackgroundColor3 = Theme.Element,
+    }, { corner(12), stroke() })
+    holder.Parent = self._page
+    setSearchMeta(holder, config, "Toggle")
+
+    if config.Flag then Library:SetFlag(config.Flag, state) end
+
+    create("TextLabel", {
+        Text = config.Name or "Toggle",
+        Font = Enum.Font.GothamMedium,
+        TextSize = touch and (compact and 14 or 16) or (compact and 12 or 14),
+        TextColor3 = Theme.Text,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -70, 1, 0),
+        Position = UDim2.new(0, 12, 0, 0),
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }).Parent = holder
+
+    local switchBg = create("Frame", {
+        Size = UDim2.new(0, touch and (compact and 42 or 50) or (compact and 34 or 40), 0, touch and (compact and 24 or 28) or (compact and 18 or 22)),
+        Position = UDim2.new(1, touch and (compact and -52 or -60) or (compact and -42 or -48), 0.5, 0),
+        AnchorPoint = Vector2.new(0, 0.5),
+        BackgroundColor3 = threeState and Color3.fromRGB(100, 100, 100) or (state and Theme.Accent or Color3.fromRGB(60, 60, 68)),
+    }, { corner(18) })
+    switchBg.Parent = holder
+    switchBg:SetAttribute("MUI_AccentSurface", true) -- eligible for a Skin's AccentTexture whenever it's actually accent-colored
+    Library:_applyAccentOverlay(switchBg, switchBg.BackgroundColor3 == Theme.Accent)
+
+    local knob = create("Frame", {
+        Size = UDim2.new(0, touch and (compact and 18 or 22) or (compact and 14 or 16), 0, touch and (compact and 18 or 22) or (compact and 14 or 16)),
+        Position = threeState and UDim2.new(0.5, -((touch and (compact and 18 or 22) or (compact and 14 or 16)) / 2), 0.5, 0) or
+            (state and UDim2.new(1, -((touch and (compact and 18 or 22) or (compact and 14 or 16)) + 3), 0.5, 0) or UDim2.new(0, 3, 0.5, 0)),
+        AnchorPoint = Vector2.new(0, 0.5),
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+    }, { corner(15) })
+    knob.Parent = switchBg
+
+    if threeState then
+        local stateLabel = create("TextLabel", {
+            Text = "−",
+            Font = Enum.Font.GothamBold,
+            TextSize = touch and 14 or 12,
+            TextColor3 = Color3.fromRGB(100, 100, 100),
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 1, 0),
         })
-        row.BackgroundTransparency = 1
+        stateLabel.Parent = knob
+    end
 
-        local labelWidth = UDim2.new(1, -46, 0, 18)
-        Render.New("Text", {
-            Text = props.Title or props.Flag,
-            TextSize = 14,
-            Size = labelWidth,
-            Theme = "Default",
-            Parent = row,
-        })
+    local hitArea = create("TextButton", {
+        Text = "",
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 1, 0),
+    })
+    hitArea.Parent = holder
 
-        if props.Description then
-            Render.New("Text", {
-                Text = props.Description,
-                TextSize = 12,
-                TextWrapped = true,
-                Size = UDim2.new(1, -46, 0, 20),
-                Position = UDim2.fromOffset(0, 19),
-                Theme = "Muted",
-                Parent = row,
-            })
+    hitArea.MouseButton1Click:Connect(function()
+        if threeState then
+            stateIndex = (stateIndex % 3) + 1
+            local states_map = {1, 2, 3}
+            state = states_map[stateIndex]
+        else
+            state = not state
         end
 
-        self.Track = Render.New("Frame", {
-            Name = "Track",
-            Size = UDim2.fromOffset(38, 20),
-            Position = UDim2.new(1, -38, props.Description and 0 or 0.5, props.Description and 0 or -10),
-            CornerRadius = 10,
-            Theme = "Default",
-            Parent = row,
-        })
-
-        self.Knob = Render.New("Frame", {
-            Name = "Knob",
-            Size = UDim2.fromOffset(16, 16),
-            Position = UDim2.new(0, 2, 0.5, -8),
-            CornerRadius = 8,
-            Color = Color3.fromRGB(255, 255, 255),
-            Theme = false,
-            Parent = self.Track,
-        })
-
-        local button = Instance.new("TextButton")
-        button.BackgroundTransparency = 1
-        button.Text = ""
-        button.Size = UDim2.fromScale(1, 1)
-        button.ZIndex = self.Track.ZIndex + 1
-        button.Parent = self.Track
-
-        local function setVisual(value)
-            if Render.Motion() then
-                local targetPos = value and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
-                TweenService:Create(self.Knob, SLIDE_INFO, { Position = targetPos }):Play()
+        if threeState then
+            if state == 3 then
+                switchBg.BackgroundColor3 = Theme.Accent
+                knob.Position = UDim2.new(1, -((touch and (compact and 18 or 22) or (compact and 14 or 16)) + 3), 0.5, 0)
+                stateLabel.Text = "+"
+            elseif state == 2 then
+                switchBg.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
+                knob.Position = UDim2.new(0.5, -((touch and (compact and 18 or 22) or (compact and 14 or 16)) / 2), 0.5, 0)
+                stateLabel.Text = "−"
             else
-                self.Knob.Position = value and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+                switchBg.BackgroundColor3 = Color3.fromRGB(60, 60, 68)
+                knob.Position = UDim2.new(0, 3, 0.5, 0)
+                stateLabel.Text = "×"
             end
+        else
+            switchBg.BackgroundColor3 = state and Theme.Accent or Color3.fromRGB(60, 60, 68)
+            knob.Position = state and UDim2.new(1, -((touch and (compact and 18 or 22) or (compact and 14 or 16)) + 3), 0.5, 0) or UDim2.new(0, 3, 0.5, 0)
+        end
+        Library:_applyAccentOverlay(switchBg, switchBg.BackgroundColor3 == Theme.Accent)
 
-            -- Direct color read instead of Theme.Apply: no rebinding, no
-            -- paint() pass, no Bindings churn on every click.
-            local style = Theme.GetStyle("Frame", value and "Enabled" or "Default")
-            if style and style.Color then
-                self.Track.BackgroundColor3 = style.Color
+        if config.Flag then Library:SetFlag(config.Flag, state) end
+        playInteractionSound("toggle")
+        local ok, err = pcall(callback, state)
+        if not ok then warn("[MobileUILib] Toggle callback error: " .. tostring(err)) end
+    end)
+
+    local handle = {
+        Set = function(_, value)
+            if threeState then
+                if value == "on" then stateIndex = 3
+                elseif value == "auto" then stateIndex = 2
+                else stateIndex = 1 end
+            else
+                state = value
             end
-        end
-
-        -- After a theme switch the track repaints to Frame/Default (its
-        -- binding); if the toggle is currently ON, resync to Enabled.
-        if section.Window then
-            local resync = Theme.OnChanged:Connect(function()
-                setVisual(Flags.GetFlag(props.Flag, false))
-            end)
-            section.Window:OnCleanup(function()
-                resync:Disconnect()
-            end)
-        end
-
-        local initial = Flags.GetFlag(props.Flag, props.Default or false)
-
-        function self.Set(a, b)
-            -- accepts both .Set(value) (Flags sync) and :Set(value) (user calls)
-            local value = b
-            if a ~= self then
-                value = a
-            end
-            setVisual(value)
-            if props.Callback then
-                task.spawn(props.Callback, value)
-            end
-        end
-
-        Flags.RegisterElement(props.Flag, self)
-        Flags.SetFlag(props.Flag, initial, true)
-        setVisual(initial)
-
-        button.MouseButton1Click:Connect(function()
-            local current = Flags.GetFlag(props.Flag, false)
-            Flags.SetFlag(props.Flag, not current)
-        end)
-
-        -- Cornelius: expose the toggle as a runnable command. The Hint is a
-        -- function so the palette always shows the live On/Off state. The id
-        -- is per-flag (flags are global across windows); Owner ties the
-        -- entry to this window so Destroy releases it.
-        if Modules.Commands then
-            Modules.Commands.Register({
-                Id = "CornUi.Toggle." .. props.Flag,
-                Title = "Toggle: " .. (props.Title or props.Flag),
-                Keywords = "toggle switch on off " .. props.Flag,
-                Hint = function()
-                    return Flags.GetFlag(props.Flag, false) and "On" or "Off"
-                end,
-                Owner = section.Window,
-                Run = function()
-                    local current = Flags.GetFlag(props.Flag, false)
-                    Flags.SetFlag(props.Flag, not current)
-                end,
-            })
-        end
-
-        return self
-    end
-
-    -- Attach sugar method onto Section so callers write section:CreateToggle{...}
-    Section.CreateToggle = function(section, props)
-        return Toggle.New(section, props)
-    end
-
-    return Toggle
+            hitArea.MouseButton1Click:Fire()
+        end,
+        Get = function() return state end
+    }
+    if config.Flag then Library.FlagElements[config.Flag] = handle end
+    return Library:_wrapElement(holder, handle)
+end
 end

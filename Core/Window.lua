@@ -1,789 +1,1708 @@
 --[[
-    CornUi v2.0 — Core/Window.lua
-    Window -> Tab -> Section shell, built entirely on Render.New / Theme.
+    Window shell, intro animation, window/tab methods — verbatim v1.9.4d.
 
-    Visual identity (restored to the CornUi v1.9.x look — near-black window,
-    gold accent, left sidebar tabs):
-      - 34px header: title left, optional icon, minimize chip right
-      - 98px sidebar rail: tab pills, the active one fills gold (Enabled)
-      - scrollable page area right of the rail, sections as dark cards
-
-    Layout engine (executor-proof):
-      NO UIListLayout, NO AutomaticSize anywhere in the shell. Every row /
-      section / page is placed by explicit Y arithmetic in ChildAdded hooks
-      (Render sets Size before Parent, so heights are final at hook time).
-      Nested list layouts + AutomaticSize stack elements on one spot on
-      several executors; arithmetic cannot fail.
-
-    Perf contract (mobile-first):
-      - ZIndexBehavior.Sibling (cheaper than Global resolution)
-      - intro is a 0.2s fade — the v2 frost/shatter overlay stranded windows
-        on some executors and is gone
-      - tweens skipped entirely on Render.SetQuality("Low")
-
-    Usage:
-        local window = WindowModule.New({ Title = "CornUi v2.0" })
-        local tab = window:AddTab("Main")
-        local section = tab:AddSection("General")
-        section:Add(someInstance)
+    The Lua below is the v1.9.4d source, verbatim, split out of the original
+    monolith. Only the prelude (binding the monolith's file-local upvalues to
+    the module table) and the trailing module export are ours; the bodies are
+    byte-identical to upload/CornUi.lua lines 111-113, 1418-2295, 2301-3061 (2797-2799 seam-forwarded). The window chrome,
+    intro, stacking and every element behave exactly as v1.9.4d shipped.
 ]]
 
+-- CornUi v1.9.4d (modular) — Core/Window.lua
 return function(Modules)
-
+    -- Verbatim-body prelude (the only non-v1.9.4d code in this file): binds
+    -- the monolith's file-local upvalues to the module system. The loader's
+    -- shared table IS the facade, so `Library.X` below reads exactly like
+    -- the v1.9.4d source; every extracted body is byte-identical to it.
+    local Library = Modules
     local Render = Modules.Render
-    local Theme = Modules.Theme
-    local Players = game:GetService("Players")
-    local Tokens = Theme.Tokens
+    local Themes = Modules.Theme.Themes
+    local Theme = Modules.Theme.Theme
+    local UserInputService = Render.UserInputService
+    local TweenService = Render.TweenService
+    local GuiService = Render.GuiService
+    local PlayerGui = Render.PlayerGui
+    local LocalPlayer = Render.LocalPlayer
+    local isTouchDevice = Render.isTouchDevice
+    local create = Render.create
+    local corner = Render.corner
+    local setSearchMeta = Render.setSearchMeta
+    local stroke = Render.stroke
+    local tween = Render.tween
+    local hasChildLayout = Render.hasChildLayout
+    local makeDraggable = Render.makeDraggable
+    local startBreathingGlow = Render.startBreathingGlow
+    local stopBreathingGlow = Render.stopBreathingGlow
+    local ripple = Render.ripple
+    local shiftZIndex = Render.shiftZIndex
 
-    local WindowModule = {}
+-- ============ COMMAND HISTORY STATE (v1.9.4d lines 111-113) ============
 
-    -- Multi-window: CornUi allows any number of live windows (main UI +
-    -- button-spawned sub-UIs). Each New() gets a unique instance Id used to
-    -- namespace its commands, and DisplayOrder is managed so the window you
-    -- last touched sits on top.
-    local WindowCount = 0
-    local TopOrder = 0
+Library.CommandHistory = {}
+Library.MAX_COMMAND_HISTORY = 20
+local commandIndex = 0
 
-    ------------------------------------------------------------
-    -- attachStack — the explicit-Y stacking engine (executor-proof).
-    -- Children are placed by arithmetic, never by UIListLayout or
-    -- AutomaticSize: nested list layouts stack every element on one spot on
-    -- several executors. Render guarantees Size is final before Parent
-    -- fires ChildAdded, and any later Size change (a nested Card growing,
-    -- for example) re-runs the whole pass through its property signal.
-    -- Height for zero-height guests falls back to one row.
-    ------------------------------------------------------------
+-- ============ WINDOW CREATION (lines 1418-2295, intro included) ============
 
-    local function attachStack(frame, opts)
-        opts = opts or {}
-        local kids = {}
+function Library:CreateWindow(config)
+    config = config or {}
 
-        local function relayout()
-            local padX = opts.PadX or 8
-            local y = opts.Top or 6
-            for _, child in ipairs(kids) do
-                if child.Parent == frame then
-                    child.Position = UDim2.fromOffset(padX, y)
-                    if child.Size.X.Scale == 1 and child.Size.X.Offset == 0 then
-                        child.Size = UDim2.new(1, -(padX * 2), child.Size.Y.Scale, child.Size.Y.Offset)
-                    end
-                    local h = child.Size.Y.Offset
-                    if h <= 0 then h = opts.RowFallback or 26 end
-                    y = y + h + (opts.Gap or 6)
-                end
-            end
-            frame.Size = UDim2.new(1, 0, 0, y - (opts.Gap or 6) + (opts.Bottom or 2))
-            if opts.OnGrow then opts.OnGrow(frame) end
-        end
-
-        frame.ChildAdded:Connect(function(child)
-            if child:IsA("GuiObject") then
-                kids[#kids + 1] = child
-                child:GetPropertyChangedSignal("Size"):Connect(relayout)
-                relayout()
-            end
-        end)
-
-        return frame
+    if Library.Flags.PerformanceMode then
+        config.Intro = false
     end
 
-    ------------------------------------------------------------
-    -- Section — dark card, rows stacked by attachStack arithmetic
-    ------------------------------------------------------------
-
-    local Section = {}
-    Section.__index = Section
-
-    function Section.New(parent, props, window)
-        props = props or {}
-
-        local self = setmetatable({}, Section)
-        self.Window = window -- back-ref so elements can register cleanup hooks
-        self._cursor = 6     -- stacked content height, kept in sync for pages
-
-        self.Frame = Render.New("Frame", {
-            Name = "Section_" .. (props.Title or "Unnamed"),
-            Size = UDim2.new(1, 0, 0, 30), -- recomputed by the stack engine
-            Theme = "Card",
-            Parent = parent,
-        })
-
-        attachStack(self.Frame, {
-            Top = 6,
-            Gap = 6,
-            OnGrow = function()
-                self._cursor = self.Frame.Size.Y.Offset
-                if window and window._syncCanvas then
-                    window:_syncCanvas()
-                end
-            end,
-        })
-
-        if props.Title then
-            Render.New("Text", {
-                Name = "SectionTitle",
-                Text = props.Title,
-                TextSize = 12,
-                Font = Enum.Font.GothamMedium,
-                Size = UDim2.new(1, -16, 0, 16),
-                Theme = "Muted",
-                Parent = self.Frame,
-            })
-        end
-
-        return self
+    if not Library.Flags.ShowIntro then
+        config.Intro = false
     end
 
-    function Section:Add(inst)
-        inst.Parent = self.Frame
-        return inst
+    local windowName = config.Name or "UI Library"
+    local guiName = config.GuiName or "MobileUILib"
+    local windowPosition = config.Position or UDim2.new(0.5, 0, 0.5, 0)
+    local subtitle = config.Subtitle
+    local iconId = config.Icon
+    if iconId and type(iconId) == "number" then
+        iconId = "rbxassetid://" .. tostring(iconId)
+    elseif iconId and type(iconId) == "string" and not iconId:match("^rbxassetid://") then
+        iconId = "rbxassetid://" .. iconId
     end
 
-    ------------------------------------------------------------
-    -- Tab — sidebar pill + full-size page container
-    ------------------------------------------------------------
+    local preset = Themes[config.Theme] or Themes.Ocean
+    for k, v in pairs(preset) do Theme[k] = v end
+    Library._currentThemeName = Themes[config.Theme] and config.Theme or "Ocean"
 
-    local Tab = {}
-    Tab.__index = Tab
+    if #Library._themeHistory >= 5 then
+        table.remove(Library._themeHistory, 1)
+    end
+    table.insert(Library._themeHistory, Library._currentThemeName)
 
-    function Tab.New(window, props)
-        props = props or {}
+    local existing = PlayerGui:FindFirstChild(guiName)
+    if existing then existing:Destroy() end
 
-        local self = setmetatable({}, Tab)
-        self.Window = window
-        self.Sections = {}
+    local screenGui = create("ScreenGui", {
+        Name = guiName,
+        ResetOnSpawn = false,
+        ZIndexBehavior = Enum.ZIndexBehavior.Global,
+        IgnoreGuiInset = false,
+    })
+    screenGui.Parent = PlayerGui
 
-        -- Stacked pill in the sidebar rail, placed by index (explicit math).
-        local index = #window.Tabs + 1
-        self.Pill = Render.New("Frame", {
-            Name = "TabPill_" .. (props.Title or "Tab"),
-            Size = UDim2.fromOffset(Tokens.SidebarWidth - 12, Tokens.SidebarTabHeight),
-            Position = UDim2.fromOffset(6, 6 + (index - 1) * (Tokens.SidebarTabHeight + Tokens.SidebarTabGap)),
-            CornerRadius = Tokens.PillCorner,
-            Theme = "Card",
+    local uiScale = create("UIScale", { Scale = 1 })
+
+    local touch = isTouchDevice()
+    local compact = Library.Flags.CompactMode
+    local togglePosition = config.TogglePosition or UDim2.new(1, -(touch and 68 or 58), 0, 16)
+
+    local mainSizeScale
+    if compact then
+        mainSizeScale = touch and UDim2.new(0.95, 0, 0.75, 0) or UDim2.new(0, 480, 0, 400)
+    else
+        mainSizeScale = touch and UDim2.new(0.92, 0, 0.82, 0) or UDim2.new(0, 560, 0, 460)
+    end
+
+    local main = create("Frame", {
+        Name = "Main",
+        Size = mainSizeScale,
+        Position = windowPosition,
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = Theme.Background,
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+    }, { corner(16), stroke(), uiScale })
+    main.Parent = screenGui
+
+    local function applyAutoScale()
+        local camera = workspace.CurrentCamera
+        local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+        local scale = Library.Flags.UIScale or 1
+        uiScale.Scale = math.clamp((viewport.Y / 720) * scale, 0.5, 1.5)
+    end
+    applyAutoScale()
+    if workspace.CurrentCamera then
+        workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(applyAutoScale)
+    end
+
+    local isLight = (preset == Themes.Light)
+
+    main.BackgroundTransparency = isLight and 0.06 or 0.1
+    if not Library.Flags.PerformanceMode then
+        local glassSheen = create("Frame", {
+            Name = "GlassSheen",
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundColor3 = Color3.new(1, 1, 1),
             BackgroundTransparency = 1,
-            Parent = window.Sidebar,
-        })
+            BorderSizePixel = 0,
+            ZIndex = 1,
+        }, { corner(16) })
+        glassSheen.Parent = main
+        create("UIGradient", {
+            Rotation = 115,
+            Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 1),
+                NumberSequenceKeypoint.new(0.45, isLight and 0.82 or 0.9),
+                NumberSequenceKeypoint.new(0.5, isLight and 0.6 or 0.75),
+                NumberSequenceKeypoint.new(0.55, isLight and 0.82 or 0.9),
+                NumberSequenceKeypoint.new(1, 1),
+            }),
+        }).Parent = glassSheen
+    end
 
-        self.Label = Render.New("Text", {
-            Name = "TabLabel_" .. (props.Title or "Tab"),
-            Text = props.Title or "Tab",
-            TextSize = 12,
+    local headerHeight = touch and 50 or 40
+    if subtitle then
+        headerHeight = touch and 64 or 52
+    end
+
+    local header = create("Frame", {
+        Name = "Header",
+        Size = UDim2.new(1, 0, 0, headerHeight),
+        BackgroundColor3 = Theme.Header,
+        BorderSizePixel = 0,
+        ZIndex = 2,
+    }, { corner(16) })
+    header.Parent = main
+
+    local titleOffset = 15
+    if iconId then
+        local iconSize = touch and 36 or 30
+        local icon = create("ImageLabel", {
+            Image = iconId,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0, iconSize, 0, iconSize),
+            Position = UDim2.new(0, 12, 0.5, 0),
+            AnchorPoint = Vector2.new(0, 0.5),
+            ZIndex = 2,
+        }, { corner(10) })
+        icon.Parent = header
+        icon:SetAttribute("MUI_NoTheme", true)
+        titleOffset = 12 + iconSize + 8
+    end
+
+    local titleBox
+
+    if subtitle then
+        titleBox = create("TextBox", {
+            Text = windowName,
+            Font = Enum.Font.GothamBold,
+            TextSize = touch and 17 or 14,
+            TextColor3 = Theme.Text,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, -(titleOffset + 90), 0, touch and 22 or 18),
+            Position = UDim2.new(0, titleOffset, 0, touch and 8 or 6),
+            TextXAlignment = Enum.TextXAlignment.Left,
+            ClearTextOnFocus = false,
+            ZIndex = 2,
+        })
+        titleBox.Parent = header
+
+        create("TextLabel", {
+            Text = subtitle,
             Font = Enum.Font.Gotham,
-            Size = UDim2.new(1, -20, 1, 0),
-            Position = UDim2.fromOffset(10, 0),
-            Theme = "Muted",
-            Parent = self.Pill,
-        })
-
-        self.Page = Render.New("Frame", {
-            Name = "TabPage_" .. (props.Title or "Tab"),
-            Size = UDim2.new(1, 0, 0, 40),
-            Theme = false, -- transparent passthrough container
-            Visible = false,
-            Parent = window.PageHolder,
-        })
-        self.Page.BackgroundTransparency = 1
-        self._cursor = 8 -- stacked sections height, synced into the canvas
-
-        attachStack(self.Page, {
-            PadX = 10,
-            Top = 8,
-            Gap = 10,
-            Bottom = 8,
-            OnGrow = function()
-                self._cursor = self.Page.Size.Y.Offset
-                window:_syncCanvas()
-            end,
-        })
-
-        local btn = Instance.new("TextButton")
-        btn.BackgroundTransparency = 1
-        btn.Text = ""
-        btn.Size = UDim2.fromScale(1, 1)
-        btn.ZIndex = self.Pill.ZIndex + 1
-        btn.Parent = self.Pill
-        btn.MouseButton1Click:Connect(function()
-            window:SelectTab(self)
-        end)
-
-        return self
-    end
-
-    function Tab:AddSection(title)
-        local section = Section.New(self.Page, { Title = title }, self.Window)
-        table.insert(self.Sections, section)
-        return section
-    end
-
-    ------------------------------------------------------------
-    -- Window
-    ------------------------------------------------------------
-
-    local Window = {}
-    Window.__index = Window
-
-    function WindowModule.New(props)
-        props = props or {}
-
-        local self = setmetatable({}, Window)
-        self.Tabs = {}
-        self._cleanups = {} -- functions run on Destroy (disconnect global input connections)
-
-        WindowCount += 1
-        self.Id = WindowCount
-
-        local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
-
-        self.ScreenGui = Instance.new("ScreenGui")
-        self.ScreenGui.Name = props.Name or ("CornUi_" .. self.Id)
-        self.ScreenGui.ResetOnSpawn = false
-        -- Sibling resolution is the modern default and cheaper than Global —
-        -- low-end devices resolve far fewer cross-branch ZIndex pairs.
-        self.ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-        self.ScreenGui.Parent = playerGui
-
-        self.Root = Render.New("Frame", {
-            Name = "Root",
-            Size = props.Size or UDim2.fromOffset(520, 360),
-            Position = props.Position or UDim2.fromScale(0.5, 0.5),
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            Theme = "Window",
-            Parent = self.ScreenGui,
-        })
-
-        ------------------------------------------------------------
-        -- Header: title (+ optional icon) left, minimize chip right
-        ------------------------------------------------------------
-
-        self.Header = Render.New("Frame", {
-            Name = "Header",
-            Size = UDim2.new(1, 0, 0, Tokens.TitleHeight),
-            Theme = false,
-            Parent = self.Root,
-        })
-        self.Header.BackgroundTransparency = 1
-
-        local titleOffset = 14
-        if props.Icon then
-            Render.New("Icon", {
-                Name = "TitleIcon",
-                Image = props.Icon,
-                Size = UDim2.fromOffset(18, 18),
-                Position = UDim2.fromOffset(12, 8),
-                Theme = false,
-                Parent = self.Header,
-            })
-            titleOffset = 36
-        end
-
-        if props.Title then
-            Render.New("Text", {
-                Name = "TitleBar",
-                Text = props.Title,
-                TextSize = 15,
-                Font = Enum.Font.GothamBold,
-                Size = UDim2.new(1, -(titleOffset + 44), 0, Tokens.TitleHeight),
-                Position = UDim2.fromOffset(titleOffset, 0),
-                Theme = "Default",
-                Parent = self.Header,
-            })
-        end
-
-        -- Minimize chip: collapses the window to its header strip.
-        local minimizeChip = Render.New("Button", {
-            Name = "MinimizeChip",
-            Text = "–",
-            TextSize = 13,
-            Size = UDim2.fromOffset(22, 22),
-            Position = UDim2.new(1, -30, 0, 6),
-            CornerRadius = Tokens.PillCorner,
-            Theme = "Card",
-            Parent = self.Header,
-        })
-        minimizeChip.MouseButton1Click:Connect(function()
-            self:SetMinimized(not self:IsMinimized())
-        end)
-
-        -- Invisible drag handle across the header. The window itself is
-        -- draggable (mobile-first: no header drag means no way to move the
-        -- window at all on touch).
-        self:_makeDraggable(self.Root, Render.New("Frame", {
-            Name = "DragHandle",
-            Size = UDim2.new(1, 0, 0, Tokens.TitleHeight),
+            TextSize = touch and 12 or 11,
+            TextColor3 = Theme.SubText,
             BackgroundTransparency = 1,
-            Theme = false,
+            Size = UDim2.new(1, -(titleOffset + 90), 0, touch and 16 or 14),
+            Position = UDim2.new(0, titleOffset, 0, touch and 32 or 26),
+            TextXAlignment = Enum.TextXAlignment.Left,
+            ZIndex = 2,
+        }).Parent = header
+    else
+        titleBox = create("TextBox", {
+            Text = windowName,
+            Font = Enum.Font.GothamBold,
+            TextSize = touch and 18 or 15,
+            TextColor3 = Theme.Text,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, -(titleOffset + 90), 1, 0),
+            Position = UDim2.new(0, titleOffset, 0, 0),
+            TextXAlignment = Enum.TextXAlignment.Left,
+            ClearTextOnFocus = false,
+            ZIndex = 2,
+        })
+        titleBox.Parent = header
+    end
+
+    local minimizeBtn = create("TextButton", {
+        Text = "—",
+        Font = Enum.Font.GothamBold,
+        TextSize = touch and 22 or 18,
+        TextColor3 = Theme.Text,
+        BackgroundColor3 = Theme.Element,
+        Size = UDim2.new(0, touch and 44 or 32, 0, touch and 44 or 32),
+        Position = UDim2.new(1, touch and -52 or -38, 0.5, 0),
+        AnchorPoint = Vector2.new(0, 0.5),
+        ZIndex = 2,
+    }, { corner(12) })
+    minimizeBtn.Parent = header
+
+    local currentThemeName = isLight and "Light" or "Ocean"
+    local themeBtn = create("TextButton", {
+        Text = isLight and "🌙" or "☀",
+        Font = Enum.Font.GothamBold,
+        TextSize = touch and 18 or 15,
+        TextColor3 = Theme.Text,
+        BackgroundColor3 = Theme.Element,
+        Size = UDim2.new(0, touch and 44 or 32, 0, touch and 44 or 32),
+        Position = UDim2.new(1, touch and -104 or -76, 0.5, 0),
+        AnchorPoint = Vector2.new(0, 0.5),
+        ZIndex = 2,
+    }, { corner(12) })
+    themeBtn.Parent = header
+
+    makeDraggable(header, main, true)
+
+    local floatSize = touch and 52 or 42
+    local floatBtn
+    if iconId then
+        floatBtn = create("ImageButton", {
+            Name = "FloatToggle",
+            Image = "",
+            BackgroundColor3 = Theme.ToggleButton,
+            Size = UDim2.new(0, floatSize, 0, floatSize),
+            Position = togglePosition,
             ZIndex = 50,
-            Parent = self.Header,
-        }))
+        }, { corner(floatSize / 2), stroke(Theme.Accent, 1.5) })
 
-        ------------------------------------------------------------
-        -- Body: 98px sidebar rail + scrollable page area
-        ------------------------------------------------------------
-
-        self.Sidebar = Render.New("Frame", {
-            Name = "Sidebar",
-            Size = UDim2.new(0, Tokens.SidebarWidth, 1, -Tokens.TitleHeight),
-            Position = UDim2.fromOffset(0, Tokens.TitleHeight),
-            Theme = false,
-            Parent = self.Root,
+        local floatIconSize = math.floor(floatSize * 0.72)
+        local floatIcon = create("ImageLabel", {
+            Name = "Icon",
+            Image = iconId,
+            ScaleType = Enum.ScaleType.Fit,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0, floatIconSize, 0, floatIconSize),
+            Position = UDim2.new(0.5, 0, 0.5, 0),
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            ZIndex = 51,
         })
-        self.Sidebar.BackgroundTransparency = 1
+        floatIcon.Parent = floatBtn
+        floatIcon:SetAttribute("MUI_NoTheme", true)
+    else
+        floatBtn = create("TextButton", {
+            Name = "FloatToggle",
+            Text = "☰",
+            Font = Enum.Font.GothamBold,
+            TextSize = touch and 22 or 18,
+            TextColor3 = Theme.Text,
+            BackgroundColor3 = Theme.ToggleButton,
+            Size = UDim2.new(0, floatSize, 0, floatSize),
+            Position = togglePosition,
+            ZIndex = 50,
+        }, { corner(floatSize / 2), stroke(Theme.Accent, 1.5) })
+    end
+    floatBtn.Parent = screenGui
 
-        -- Hairline divider between the rail and the page area.
-        Render.New("Frame", {
-            Name = "SidebarDivider",
-            Size = UDim2.new(0, 1, 1, 0),
-            Position = UDim2.fromOffset(Tokens.SidebarWidth - 1, 0),
-            Theme = "Card",
-            Parent = self.Sidebar,
+    makeDraggable(floatBtn, floatBtn, false)
+
+    floatBtn.MouseButton1Click:Connect(function()
+        main.Visible = not main.Visible
+    end)
+
+    local body = create("Frame", {
+        Name = "Body",
+        Size = UDim2.new(1, 0, 1, -headerHeight),
+        Position = UDim2.new(0, 0, 0, headerHeight),
+        BackgroundTransparency = 1,
+        ZIndex = 2,
+    }, {
+        create("UIPadding", {
+            PaddingTop = UDim.new(0, compact and 6 or 12),
+            PaddingBottom = UDim.new(0, compact and 6 or 12),
+            PaddingLeft = UDim.new(0, compact and 4 or 8),
+            PaddingRight = UDim.new(0, compact and 4 or 8),
+        }),
+    })
+    body.Parent = main
+
+    local tabList = create("ScrollingFrame", {
+        Name = "TabList",
+        Size = UDim2.new(touch and 0.32 or 0.28, 0, 1, 0),
+        BackgroundColor3 = Theme.Header,
+        BorderSizePixel = 0,
+        ScrollBarThickness = touch and 6 or 4,
+        ScrollBarImageColor3 = Theme.Accent,
+        ElasticBehavior = Enum.ElasticBehavior.WhenScrollable,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    }, {
+        corner(12),
+        create("UIListLayout", {
+            Padding = UDim.new(0, compact and 2 or 4),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+        }),
+        create("UIPadding", {
+            PaddingTop = UDim.new(0, compact and 4 or 8),
+            PaddingBottom = UDim.new(0, compact and 4 or 8),
+            PaddingLeft = UDim.new(0, compact and 4 or 8),
+            PaddingRight = UDim.new(0, compact and 4 or 8),
+        }),
+    })
+    tabList.Parent = body
+
+    local pages = create("Frame", {
+        Name = "Pages",
+        Size = UDim2.new(1 - (touch and 0.32 or 0.28), 0, 1, 0),
+        Position = UDim2.new(touch and 0.32 or 0.28, 0, 0, 0),
+        BackgroundTransparency = 1,
+        ClipsDescendants = true,
+    })
+    pages.Parent = body
+
+    local minimized = false
+    minimizeBtn.MouseButton1Click:Connect(function()
+        minimized = not minimized
+        tween(main, { Size = minimized and UDim2.new(main.Size.X.Scale, main.Size.X.Offset, 0, headerHeight) or mainSizeScale }, 0.2)
+        body.Visible = not minimized
+    end)
+
+    local notifHolder = create("Frame", {
+        Name = "NotifHolder",
+        Size = UDim2.new(0, touch and 280 or 260, 1, -20),
+        Position = UDim2.new(1, -16, 1, -10),
+        AnchorPoint = Vector2.new(1, 1),
+        BackgroundTransparency = 1,
+		ZIndex = 150,
+    }, {
+        create("UIListLayout", {
+            Padding = UDim.new(0, 8),
+            VerticalAlignment = Enum.VerticalAlignment.Bottom,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+        }),
+    })
+    notifHolder.Parent = screenGui
+
+    local spotlightOverlay = create("Frame", {
+        Name = "Spotlight",
+        Size = body.Size,
+        Position = body.Position,
+        BackgroundColor3 = Color3.new(0, 0, 0),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Active = false,
+        ZIndex = 5,
+    })
+    spotlightOverlay.Parent = main
+
+    local Window = setmetatable({
+        _screenGui = screenGui,
+        _main = main,
+        _tabList = tabList,
+        _pages = pages,
+        _tabs = {},
+        _touch = touch,
+        _firstTab = true,
+        _notifHolder = notifHolder,
+        _notifCount = 0,
+        _currentPageEntry = nil,
+        _spotlightOverlay = spotlightOverlay,
+        _spotlightCount = 0,
+        _animationSpeed = 1.0,
+        _shadowEnabled = false,
+        _blurAmount = 0,
+        _commands = {
+            ["t-notif"] = function(w)
+                w:Notify({ Title = "Test Notification", Content = "This is a test notification.", Type = "info" })
+            end,
+            ["theme"] = function(w, argString)
+                local theme = argString:match("^(%S+)")
+                if theme and Themes[theme] then
+                    w:SetTheme(theme)
+                    w:Notify({ Title = "Theme", Content = "Switched to " .. theme, Type = "success" })
+                else
+                    local themes = {}
+                    for name in pairs(Themes) do
+                        table.insert(themes, name)
+                    end
+                    w:Notify({ Title = "Themes", Content = "Available: " .. table.concat(themes, ", "), Type = "info" })
+                end
+            end,
+            ["save"] = function(w, argString)
+                local name = argString ~= "" and argString or "default"
+                local success = Library:SaveConfig(name)
+                if success then
+                    w:Notify({ Title = "Config Saved", Content = "Saved as '" .. name .. "'", Type = "success" })
+                else
+                    w:Notify({ Title = "Error", Content = "Failed to save config", Type = "error" })
+                end
+            end,
+            ["load"] = function(w, argString)
+                local name = argString ~= "" and argString or "default"
+                local success = Library:LoadConfig(name, w)
+                if success then
+                    w:Notify({ Title = "Config Loaded", Content = "Loaded '" .. name .. "'", Type = "success" })
+                else
+                    w:Notify({ Title = "Error", Content = "Failed to load config", Type = "error" })
+                end
+            end,
+            ["list"] = function(w)
+                local configs = Library:ListConfigs()
+                if #configs > 0 then
+                    w:Notify({ Title = "Configs", Content = table.concat(configs, ", "), Type = "info" })
+                else
+                    w:Notify({ Title = "Configs", Content = "No saved configs", Type = "info" })
+                end
+            end,
+            ["minimize"] = function(w)
+                minimized = not minimized
+                tween(main, { Size = minimized and UDim2.new(main.Size.X.Scale, main.Size.X.Offset, 0, headerHeight) or mainSizeScale }, 0.2)
+                body.Visible = not minimized
+            end,
+            ["export"] = function(w)
+                local json = Library:ExportConfig()
+
+                if not json or json == "" then
+                    json = "{}"
+                end
+
+                local popup = create("Frame", {
+                    Size = UDim2.new(0, 400, 0, 300),
+                    Position = UDim2.new(0.5, 0, 0.5, 0),
+                    AnchorPoint = Vector2.new(0.5, 0.5),
+                    BackgroundColor3 = Theme.Header,
+                    ZIndex = 201,
+                }, { corner(14), stroke(Theme.Accent, 1.5) })
+                popup.Parent = screenGui
+
+                create("TextLabel", {
+                    Text = "Export Config",
+                    Font = Enum.Font.GothamBold,
+                    TextSize = 16,
+                    TextColor3 = Theme.Text,
+                    BackgroundTransparency = 1,
+                    Size = UDim2.new(1, 0, 0, 30),
+                    Position = UDim2.new(0, 0, 0, 8),
+                }).Parent = popup
+
+                local scrollFrame = create("ScrollingFrame", {
+                    Size = UDim2.new(1, -20, 1, -70),
+                    Position = UDim2.new(0, 10, 0, 40),
+                    BackgroundColor3 = Theme.Element,
+                    BorderSizePixel = 0,
+                    ScrollBarThickness = 6,
+                    CanvasSize = UDim2.new(0, 0, 0, 0),
+                    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+                }, { corner(8) })
+                scrollFrame.Parent = popup
+
+                local textBox = create("TextBox", {
+                    Text = json,
+                    Font = Enum.Font.Gotham,
+                    TextSize = 13,
+                    TextColor3 = Theme.Text,
+                    BackgroundTransparency = 1,
+                    Size = UDim2.new(1, 0, 0, 0),
+                    AutomaticSize = Enum.AutomaticSize.Y,
+                    MultiLine = true,
+                    ClearTextOnFocus = false,
+                    TextWrapped = true,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    TextYAlignment = Enum.TextYAlignment.Top,
+                })
+                textBox.Parent = scrollFrame
+
+                local copyBtn = create("TextButton", {
+                    Text = "📋 Copy",
+                    Font = Enum.Font.GothamBold,
+                    TextSize = 13,
+                    TextColor3 = Theme.Text,
+                    BackgroundColor3 = Theme.Accent,
+                    Size = UDim2.new(0, 70, 0, 28),
+                    Position = UDim2.new(1, -80, 1, -38),
+                }, { corner(8) })
+                copyBtn.Parent = popup
+                copyBtn.MouseButton1Click:Connect(function()
+                    local copyPopup = create("Frame", {
+                        Size = UDim2.new(0, 380, 0, 80),
+                        Position = UDim2.new(0.5, 0, 0.5, 0),
+                        AnchorPoint = Vector2.new(0.5, 0.5),
+                        BackgroundColor3 = Theme.Header,
+                        ZIndex = 300,
+                    }, { corner(14), stroke(Theme.Accent, 1.5) })
+                    copyPopup.Parent = screenGui
+
+                    create("TextLabel", {
+                        Text = "Select and copy the text below:",
+                        Font = Enum.Font.Gotham,
+                        TextSize = 12,
+                        TextColor3 = Theme.SubText,
+                        BackgroundTransparency = 1,
+                        Size = UDim2.new(1, -20, 0, 20),
+                        Position = UDim2.new(0, 10, 0, 8),
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                    }).Parent = copyPopup
+
+                    local copyBox = create("TextBox", {
+                        Text = json,
+                        Font = Enum.Font.Gotham,
+                        TextSize = 12,
+                        TextColor3 = Theme.Text,
+                        BackgroundColor3 = Theme.Element,
+                        Size = UDim2.new(1, -20, 0, 30),
+                        Position = UDim2.new(0, 10, 0, 32),
+                        MultiLine = true,
+                        ClearTextOnFocus = false,
+                        TextWrapped = true,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                    }, { corner(6) })
+                    copyBox.Parent = copyPopup
+
+                    local closeCopyBtn = create("TextButton", {
+                        Text = "Close",
+                        Font = Enum.Font.GothamBold,
+                        TextSize = 12,
+                        TextColor3 = Theme.Text,
+                        BackgroundColor3 = Theme.Accent,
+                        Size = UDim2.new(0, 60, 0, 24),
+                        Position = UDim2.new(0.5, -30, 1, -30),
+                    }, { corner(6) })
+                    closeCopyBtn.Parent = copyPopup
+                    closeCopyBtn.MouseButton1Click:Connect(function()
+                        copyPopup:Destroy()
+                    end)
+                end)
+
+                local closeBtn = create("TextButton", {
+                    Text = "Close",
+                    Font = Enum.Font.GothamBold,
+                    TextSize = 14,
+                    TextColor3 = Theme.Text,
+                    BackgroundColor3 = Theme.Accent,
+                    Size = UDim2.new(0, 70, 0, 28),
+                    Position = UDim2.new(0.5, -35, 1, -38),
+                }, { corner(8) })
+                closeBtn.Parent = popup
+                closeBtn.MouseButton1Click:Connect(function()
+                    popup:Destroy()
+                end)
+            end,
+            ["screenshot"] = function(w)
+                local success = false
+                if type(GuiService.CaptureScreenshot) == "function" then
+                    success = pcall(function() GuiService:CaptureScreenshot() end)
+                end
+                if success then
+                    w:Notify({ Title = "Screenshot", Content = "Captured!", Type = "success" })
+                else
+                    w:Notify({ Title = "Screenshot", Content = "Not supported in this executor", Type = "warning" })
+                end
+            end,
+            ["help"] = function(w)
+                local cmds = {}
+                for cmd in pairs(w._commands) do
+                    table.insert(cmds, cmd)
+                end
+                for cmd in pairs(Cornelius.Commands) do
+                    table.insert(cmds, "/cornelius " .. cmd)
+                end
+                w:Notify({ Title = "Commands", Content = "Available: " .. table.concat(cmds, ", "), Type = "info" })
+            end,
+            ["reset"] = function(w)
+                w:Notify({ Title = "Reset", Content = "Are you sure? Type 'reset confirm' to proceed", Type = "warning" })
+                w._pendingReset = true
+                task.delay(10, function()
+                    w._pendingReset = false
+                end)
+            end,
+            ["reset confirm"] = function(w)
+                if w._pendingReset then
+                    for name in pairs(Library.Flags) do
+                        Library:SetFlag(name, nil)
+                    end
+                    w:Notify({ Title = "Reset", Content = "All flags reset to default", Type = "success" })
+                    w._pendingReset = false
+                end
+            end,
+            ["cornelius"] = function(w, argString)
+                Cornelius:HandleCommand(w, "/cornelius " .. (argString or ""))
+            end,
+        },
+    }, { __index = Library.WindowMethods })
+
+    Cornelius._window = Window
+
+    titleBox.Focused:Connect(function()
+        titleBox.Text = ""
+    end)
+
+    titleBox.FocusLost:Connect(function()
+        local raw = titleBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
+        if raw ~= "" then
+            if raw:match("^/cornelius") then
+                Cornelius:HandleCommand(Window, raw)
+                titleBox.Text = windowName
+                return
+            end
+
+            table.insert(Library.CommandHistory, raw)
+            if #Library.CommandHistory > Library.MAX_COMMAND_HISTORY then
+                table.remove(Library.CommandHistory, 1)
+            end
+            commandIndex = #Library.CommandHistory
+
+            local words = {}
+            for word in raw:gmatch("%S+") do
+                table.insert(words, word)
+            end
+            local cmd = table.remove(words, 1):lower()
+            local action = Window._commands[cmd]
+            if action then
+                local argString = table.concat(words, " ")
+                local ok, err = pcall(action, Window, argString, words)
+                if not ok then warn("[MobileUILib] Command palette error: " .. tostring(err)) end
+            else
+                local suggestions = {}
+                for c in pairs(Window._commands) do
+                    if c:find(cmd, 1, true) then
+                        table.insert(suggestions, c)
+                    end
+                end
+                if #suggestions > 0 then
+                    Window:Notify({ Title = "Command Not Found", Content = "Did you mean: " .. table.concat(suggestions, ", "), Type = "warning" })
+                else
+                    Window:Notify({ Title = "Command Not Found", Content = "Type 'help' for available commands", Type = "error" })
+                end
+            end
+        end
+        titleBox.Text = windowName
+    end)
+
+    titleBox.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.Up then
+            if #Library.CommandHistory > 0 then
+                commandIndex = math.max(1, commandIndex - 1)
+                titleBox.Text = Library.CommandHistory[commandIndex]
+                titleBox.CursorPosition = #titleBox.Text
+            end
+        elseif input.KeyCode == Enum.KeyCode.Down then
+            if commandIndex < #Library.CommandHistory then
+                commandIndex = commandIndex + 1
+                titleBox.Text = Library.CommandHistory[commandIndex]
+                titleBox.CursorPosition = #titleBox.Text
+            else
+                commandIndex = #Library.CommandHistory
+                titleBox.Text = ""
+            end
+        end
+    end)
+
+    themeBtn.MouseButton1Click:Connect(function()
+        local themes = {"Ocean", "Dark", "Light", "Amethyst", "Ruby", "Frost", "Candy", "Midnight", "Cyber"}
+        local idx = 1
+        for i, t in ipairs(themes) do
+            if t == currentThemeName then
+                idx = i % #themes + 1
+                break
+            end
+        end
+        currentThemeName = themes[idx]
+        themeBtn.Text = (currentThemeName == "Light") and "🌙" or "☀"
+        Window:SetTheme(currentThemeName)
+    end)
+
+    if Library.Flags.AutoSaveInterval and Library.Flags.AutoSaveInterval > 0 then
+        task.spawn(function()
+            while main.Parent do
+                task.wait(Library.Flags.AutoSaveInterval)
+                pcall(function() Library:SaveConfig("autosave") end)
+            end
+        end)
+    end
+
+    -- ============================================================
+    -- INTRO ANIMATION
+    -- ============================================================
+
+    if Library.Flags.ReducedMotion or not Library.Flags.ShowIntro then
+        return Window
+    end
+
+    local introConfig = config.Intro or {}
+    local introImage = introConfig.Image
+    if introImage == nil then
+        introImage = 80406291512141
+    elseif introImage == false then
+        introImage = nil
+    end
+    if introImage and type(introImage) == "number" then
+        introImage = "rbxassetid://" .. tostring(introImage)
+    elseif introImage and type(introImage) == "string" and not introImage:match("^rbxassetid://") then
+        introImage = "rbxassetid://" .. introImage
+    end
+    local introText = introConfig.Text or "-By Lifeless"
+    local introHold = introConfig.Duration or 1.4
+    local normalIntroTooltips = {
+        "Tip: click the hub name to open the command palette.",
+        "Tip: click the floating button to hide or restore the hub.",
+        "Tip: use the theme button to switch between light and dark mode.",
+        "Tip: settings with a Flag can be saved and restored with configs.",
+        "Tip: tabs and the hub window can be dragged on desktop and touch.",
+        "Create your own themes! using the gradient feature",
+        "tired of a new key daily, get a weekly key now!",
+        "Type 'help' to see all commands!",
+        "Type 'export' to share your config!",
+        "Type '/cornelius help' to see Cornelius commands!",
+    }
+    local funnyIntroTooltips = {
+        "Downloading more RAM...",
+        "Cleaning the toilet...",
+        "C:????????????????????????: Something happened.",
+        "Teaching the corn how to code...",
+        "Convincing the buttons to behave...",
+        "Calibrating the cat launcher...",
+        "gooning....Wait",
+        "Yes i used claude for debugging, SMD if you have problem",
+        "Alt+F4 gives free bobux",
+        "v1.9.3 - Stable Release",
+        "Type 'screenshot' for free photos",
+        "Cornelius is watching...",
+    }
+    local introTooltips = introConfig.Funny == true and funnyIntroTooltips or normalIntroTooltips
+    local lastIntroTooltip
+    local function nextIntroTooltip()
+        if #introTooltips == 1 then return introTooltips[1] end
+        local tooltip
+        repeat
+            tooltip = introTooltips[math.random(1, #introTooltips)]
+        until tooltip ~= lastIntroTooltip
+        lastIntroTooltip = tooltip
+        return tooltip
+    end
+
+    local introBg = isLight and Color3.fromRGB(250, 250, 252) or Color3.fromRGB(0, 0, 0)
+    local introLineColor = isLight and Color3.fromRGB(20, 20, 24) or Color3.fromRGB(255, 255, 255)
+    local introTextColor = Color3.fromRGB(255, 196, 48)
+
+    local introOverlay = create("Frame", {
+        Name = "IntroOverlay",
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ZIndex = 300,
+        Active = true,
+    })
+    introOverlay.Parent = screenGui
+
+    local skipBtn = create("TextButton", {
+        Text = "Skip",
+        Font = Enum.Font.Gotham,
+        TextSize = 14,
+        TextColor3 = Color3.fromRGB(150, 150, 150),
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0, 60, 0, 30),
+        Position = UDim2.new(1, -80, 1, -50),
+        ZIndex = 303,
+    })
+    skipBtn.Parent = introOverlay
+    skipBtn.MouseButton1Click:Connect(function()
+        introOverlay:Destroy()
+    end)
+
+    local wipe = create("Frame", {
+        Size = UDim2.new(0, 0, 1, 0),
+        BackgroundColor3 = introBg,
+        BorderSizePixel = 0,
+        ZIndex = 300,
+    })
+    wipe.Parent = introOverlay
+
+    local introHolder = create("Frame", {
+        Size = UDim2.new(0, 280, 0, 260),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundTransparency = 1,
+        ZIndex = 302,
+    }, {
+        create("UIListLayout", {
+            Padding = UDim.new(0, 16),
+            FillDirection = Enum.FillDirection.Vertical,
+            HorizontalAlignment = Enum.HorizontalAlignment.Center,
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+        }),
+    })
+    introHolder.Parent = introOverlay
+
+    local introImgLabel
+    if introImage then
+        introImgLabel = create("ImageLabel", {
+            Image = introImage,
+            BackgroundTransparency = 1,
+            ImageTransparency = 1,
+            Size = UDim2.new(0, 140, 0, 140),
+            ZIndex = 302,
         })
+        introImgLabel.Parent = introHolder
+    end
 
-        -- Scrollable page holder: overflowing tab content scrolls instead of
-        -- clipping at the window edge. Canvas height is driven explicitly by
-        -- _syncCanvas — no AutomaticCanvasSize, no list layouts.
-        self.PageHolder = Render.New("Scroll", {
-            Name = "PageHolder",
-            Size = UDim2.new(1, -Tokens.SidebarWidth, 1, -Tokens.TitleHeight),
-            Position = UDim2.fromOffset(Tokens.SidebarWidth, Tokens.TitleHeight),
-            CanvasSize = UDim2.new(),
-            AutomaticCanvasSize = Enum.AutomaticSize.None,
-            Theme = false,
-            Parent = self.Root,
+    local introTextLabel = create("TextLabel", {
+        Text = introText,
+        Font = Enum.Font.GothamBold,
+        TextSize = 26,
+        TextColor3 = introTextColor,
+        TextTransparency = 1,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 32),
+        ZIndex = 302,
+    })
+    introTextLabel.Parent = introHolder
+
+    local introTooltipLabel = create("TextLabel", {
+        Name = "Tooltip",
+        Text = nextIntroTooltip(),
+        Font = Enum.Font.Gotham,
+        TextSize = 13,
+        TextColor3 = isLight and Color3.fromRGB(85, 85, 92) or Color3.fromRGB(190, 190, 198),
+        TextTransparency = 1,
+        TextWrapped = true,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -20, 0, 38),
+        ZIndex = 302,
+    })
+    introTooltipLabel.Parent = introHolder
+
+    task.spawn(function()
+        tween(wipe, { Size = UDim2.new(1, 0, 1, 0) }, 0.5)
+        task.wait(0.5)
+
+        if introImgLabel then
+            tween(introImgLabel, { ImageTransparency = 0 }, 0.5)
+            task.wait(0.3)
+        end
+        tween(introTextLabel, { TextTransparency = 0 }, 0.5)
+        tween(introTooltipLabel, { TextTransparency = 0 }, 0.5)
+
+        local elapsed = 0
+        while elapsed < introHold do
+            local waitTime = math.min(2, introHold - elapsed)
+            task.wait(waitTime)
+            elapsed = elapsed + waitTime
+            if elapsed < introHold then
+                introTooltipLabel.Text = nextIntroTooltip()
+            end
+        end
+
+        tween(introTextLabel, { TextTransparency = 1 }, 0.3)
+        tween(introTooltipLabel, { TextTransparency = 1 }, 0.3)
+        if introImgLabel then tween(introImgLabel, { ImageTransparency = 1 }, 0.3) end
+        task.wait(0.3)
+
+        wipe.Visible = false
+
+        local topHalf = create("Frame", {
+            Size = UDim2.new(1, 0, 0.5, 0),
+            Position = UDim2.new(0, 0, 0, 0),
+            BackgroundColor3 = introBg,
+            BorderSizePixel = 0,
+            ZIndex = 300,
         })
+        topHalf.Parent = introOverlay
 
-        if props.Intro ~= false and Render.Motion() then
-            task.defer(function()
-                self:PlayIntro()
+        local bottomHalf = create("Frame", {
+            Size = UDim2.new(1, 0, 0.5, 0),
+            Position = UDim2.new(0, 0, 0.5, 0),
+            BackgroundColor3 = introBg,
+            BorderSizePixel = 0,
+            ZIndex = 300,
+        })
+        bottomHalf.Parent = introOverlay
+
+        local centerLine = create("Frame", {
+            Size = UDim2.new(1, 0, 0, 3),
+            Position = UDim2.new(0, 0, 0.5, -1),
+            BackgroundColor3 = introLineColor,
+            BorderSizePixel = 0,
+            ZIndex = 301,
+        })
+        centerLine.Parent = introOverlay
+
+        tween(topHalf, { Position = UDim2.new(0, 0, -0.5, 0) }, 0.55)
+        tween(bottomHalf, { Position = UDim2.new(0, 0, 1, 0) }, 0.55)
+        tween(centerLine, { BackgroundTransparency = 1 }, 0.4)
+
+        task.wait(0.6)
+        introOverlay:Destroy()
+    end)
+
+    return Window
+end
+
+-- ============ WINDOW METHODS (lines 2301-2795) ============
+
+Library.WindowMethods = {}
+local WM = Library.WindowMethods
+
+-- ============================================================
+-- NOTIFY (FIXED: Proper sizing with clipping)
+-- ============================================================
+
+function WM:Notify(config)
+    config = config or {}
+    local touch = self._touch
+    local title = config.Title or "Notification"
+    local content = config.Content or ""
+    local duration = config.Duration or 4
+    local notifType = config.Type
+
+    local typeColors = {
+        success = Color3.fromRGB(70, 200, 110),
+        error = Color3.fromRGB(230, 75, 75),
+        warning = Color3.fromRGB(255, 175, 45),
+        info = Theme.Accent,
+    }
+    local typeIcons = {
+        success = "✓",
+        error = "✕",
+        warning = "!",
+        info = "i",
+    }
+    local barColor = typeColors[notifType] or Theme.Accent
+    local iconChar = typeIcons[notifType]
+
+    self._notifCount += 1
+
+    -- ✅ FIXED: Create() includes ALL children, including UISizeConstraint
+    local notif = create("Frame", {
+    Name = "Notification",
+    Size = UDim2.new(0, touch and 300 or 360, 0, 70),
+    BackgroundColor3 = Theme.Header,
+    BackgroundTransparency = 1,
+    LayoutOrder = self._notifCount,
+    ZIndex = 150,
+    ClipsDescendants = true,
+}, {
+    corner(12),
+    stroke(barColor, 1),
+
+    create("UIPadding", {
+        PaddingTop = UDim.new(0, 10),
+        PaddingBottom = UDim.new(0, 10),
+        PaddingLeft = UDim.new(0, 12),
+        PaddingRight = UDim.new(0, 12),
+    }),
+
+    create("UIListLayout", {
+        Padding = UDim.new(0, 4),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+    }),
+})
+
+notif.Parent = self._notifHolder
+
+    -- Title row
+    local titleRow = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 22),
+        BackgroundTransparency = 1,
+        LayoutOrder = 1,
+    }, {
+        create("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            Padding = UDim.new(0, 6),
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+        }),
+    })
+    titleRow.Parent = notif
+
+    if iconChar then
+        local iconLabel = create("TextLabel", {
+            Text = iconChar,
+            Font = Enum.Font.GothamBold,
+            TextSize = touch and 15 or 13,
+            TextColor3 = barColor,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0, 16, 1, 0),
+            TextTransparency = 1,
+            ZIndex = 151,
+        })
+        iconLabel.Parent = titleRow
+        tween(iconLabel, { TextTransparency = 0 }, 0.2)
+    end
+
+    local titleLabel = create("TextLabel", {
+        Text = title,
+        Font = Enum.Font.GothamBold,
+        TextSize = touch and 16 or 14,
+        TextColor3 = Theme.Text,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, iconChar and -22 or 0, 1, 0),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextWrapped = true,
+        TextTransparency = 1,
+        ZIndex = 151,
+    })
+    titleLabel.Parent = titleRow
+
+    local contentLabel = create("TextLabel", {
+        Text = content,
+        Font = Enum.Font.Gotham,
+        TextSize = touch and 14 or 12,
+        TextColor3 = Theme.SubText,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		TextWrapped = true,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+        TextWrapped = true,
+        TextTransparency = 1,
+        LayoutOrder = 2,
+        ZIndex = 151,
+    })
+    contentLabel.Parent = notif
+
+    -- Progress bar
+    local progressColor = typeColors[notifType] or Color3.fromRGB(140, 140, 148)
+    local progressTrack = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 3),
+        BackgroundColor3 = Theme.Element,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        LayoutOrder = 3,
+        ZIndex = 151,
+    }, { corner(2) })
+    progressTrack.Parent = notif
+
+    local progressBar = create("Frame", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundColor3 = progressColor,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ZIndex = 152,
+    }, { corner(2) })
+    progressBar.Parent = progressTrack   
+ 
+
+    -- ✅ Fade in
+    tween(notif, { BackgroundTransparency = 0 }, 0.2)
+    tween(titleLabel, { TextTransparency = 0 }, 0.2)
+    tween(contentLabel, { TextTransparency = 0 }, 0.2)
+    tween(progressTrack, { BackgroundTransparency = 0.7 }, 0.2)
+    tween(progressBar, { BackgroundTransparency = 0 }, 0.2)
+
+    -- Animate progress bar
+    TweenService:Create(progressBar, TweenInfo.new(duration, Enum.EasingStyle.Linear), { Size = UDim2.new(0, 0, 1, 0) }):Play()
+
+    -- Auto‑dismiss
+    task.delay(duration, function()
+        if notif and notif.Parent then
+            tween(notif, { BackgroundTransparency = 1 }, 0.25)
+            tween(titleLabel, { TextTransparency = 1 }, 0.25)
+            tween(contentLabel, { TextTransparency = 1 }, 0.25)
+            tween(progressTrack, { BackgroundTransparency = 1 }, 0.25)
+            tween(progressBar, { BackgroundTransparency = 1 }, 0.25)
+            task.delay(0.3, function()
+                if notif then notif:Destroy() end
             end)
         end
+    end)
+end
+-- ============================================================
+-- WINDOW: SET THEME
+-- ============================================================
 
-        -- Cornelius: window-level commands (Commands loads before Window).
-        -- The Id carries the instance number so parallel windows never
-        -- collide, and Owner ties the entry to this window's lifetime.
-        if Modules.Commands then
-            Modules.Commands.Register({
-                Id = "CornUi.W" .. self.Id .. ".ToggleVisible",
-                Title = "Toggle window visibility",
-                Keywords = "window show hide cornui",
-                Owner = self,
-                Run = function()
-                    self:SetVisible(not self.Root.Visible)
-                end,
-            })
-        end
+function WM:SetTheme(name)
+    local newPreset = Themes[name]
+    if not newPreset then return end
 
-        -- Newest window lands on top of the stack (multi-window z-order).
-        self:Focus()
+    Library._currentThemeName = name
 
-        -- Theme switches repaint pill/label bindings; re-run SelectTab so
-        -- the active pill keeps its gold fill + dark label under the new
-        -- palette. Disconnected on Destroy.
-        local themeResync = Theme.OnChanged:Connect(function()
-            if self.ActiveTab then
-                self:SelectTab(self.ActiveTab, true)
-            end
-        end)
-        self:OnCleanup(function()
-            themeResync:Disconnect()
-        end)
-
-        return self
+    if #Library._themeHistory >= 5 then
+        table.remove(Library._themeHistory, 1)
     end
+    table.insert(Library._themeHistory, name)
 
-    -- Raises this window above every other CornUi window. Called on creation
-    -- and by sub-UI buttons re-opening an existing sub-window.
-    function Window:Focus()
-        TopOrder += 1
-        self.ScreenGui.DisplayOrder = TopOrder
-        return self
-    end
+    local reverseMap = {}
+    for k, v in pairs(Theme) do reverseMap[tostring(v)] = k end
 
-    -- Keeps the scroll canvas equal to the active page's stacked height.
-    function Window:_syncCanvas()
-        local active = self.ActiveTab
-        if active and self.PageHolder then
-            self.PageHolder.CanvasSize = UDim2.fromOffset(0, active._cursor + 8)
-        end
-    end
-
-    function Window:AddTab(title)
-        local tab = Tab.New(self, { Title = title })
-        table.insert(self.Tabs, tab)
-
-        if #self.Tabs == 1 then
-            self:SelectTab(tab)
-        end
-
-        -- Cornelius: every tab is reachable as a command.
-        if Modules.Commands then
-            Modules.Commands.Register({
-                Id = "CornUi.W" .. self.Id .. ".Tab." .. title,
-                Title = "Go to tab: " .. title,
-                Keywords = "tab switch open " .. title,
-                Hint = "Tab",
-                Owner = self,
-                Run = function()
-                    self:SelectTab(tab)
-                end,
-            })
-        end
-
-        return tab
-    end
-
-    function Window:SelectTab(target, instant)
-        for _, tab in ipairs(self.Tabs) do
-            local active = (tab == target)
-            tab.Page.Visible = active
-            -- Active pill fills gold (Enabled role); inactive pills vanish.
-            -- Rebinding lets Theme.Set repaint the right role per state.
-            Modules.Theme.Apply(tab.Pill, "Frame", { Theme = active and "Enabled" or "Card" })
-            tab.Pill.BackgroundTransparency = active and 0 or 1
-            if active then
-                -- Dark label on the gold pill: use the Window (darkest) color
-                -- so the pairing holds on every theme.
-                local dark = Theme.GetStyle("Frame", "Window")
-                if dark and dark.Color then
-                    tab.Label.TextColor3 = dark.Color
+    for _, inst in ipairs(self._screenGui:GetDescendants()) do
+        if inst:IsA("GuiObject") then
+            local ok, bg = pcall(function() return inst.BackgroundColor3 end)
+            if ok then
+                local key = reverseMap[tostring(bg)]
+                if key and newPreset[key] then
+                    tween(inst, { BackgroundColor3 = newPreset[key] }, 0.35)
                 end
-            else
-                Modules.Theme.Apply(tab.Label, "Text", { Theme = "Muted" })
+            end
+            if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
+                local key2 = reverseMap[tostring(inst.TextColor3)]
+                if key2 and newPreset[key2] then
+                    tween(inst, { TextColor3 = newPreset[key2] }, 0.35)
+                end
+            end
+            if (inst:IsA("ImageLabel") or inst:IsA("ImageButton")) and not inst:GetAttribute("MUI_NoTheme") then
+                local key3 = reverseMap[tostring(inst.ImageColor3)]
+                if key3 and newPreset[key3] then
+                    tween(inst, { ImageColor3 = newPreset[key3] }, 0.35)
+                end
+            end
+        elseif inst:IsA("UIStroke") then
+            local key4 = reverseMap[tostring(inst.Color)]
+            if key4 and newPreset[key4] then
+                tween(inst, { Color = newPreset[key4] }, 0.35)
             end
         end
-        self.ActiveTab = target
-        self:_syncCanvas()
-        return self
     end
 
-    -- Registers a function to run when the window is destroyed — elements
-    -- and sub-systems use this to disconnect their global UserInputService
-    -- connections instead of leaking them for the rest of the session.
-    function Window:OnCleanup(fn)
-        table.insert(self._cleanups, fn)
-        return fn
-    end
+    for k, v in pairs(newPreset) do Theme[k] = v end
+end
 
-    -- Debounced config autosave tied to this window's lifetime: flags are
-    -- written to disk `intervalSeconds` after the last change.
-    function Window:EnableAutoSave(configName, intervalSeconds)
-        assert(Modules.Config, "EnableAutoSave: Config system not loaded")
-        local stop = Modules.Config.EnableAutoSave(configName, intervalSeconds)
-        self:OnCleanup(stop)
-        return stop
-    end
+-- ============================================================
+-- WINDOW: SET THEME COLOR
+-- ============================================================
 
-    -- Shared drag implementation: moves `target` by following input on
-    -- `handle` (works for mouse and touch). Connections are registered for
-    -- cleanup so Destroy() doesn't leak them.
-    function Window:_makeDraggable(target, handle)
-        local UserInputService = game:GetService("UserInputService")
-        local dragging, dragStart, startPos = false, nil, nil
+local THEME_EDITOR_KEYS = { Background = true, ToggleButton = true }
 
-        local began = handle.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-                or input.UserInputType == Enum.UserInputType.Touch then
-                dragging = true
-                dragStart = input.Position
-                startPos = target.Position
+function WM:SetThemeColor(key, color)
+    if not THEME_EDITOR_KEYS[key] then return end
+    local oldColor = Theme[key]
+    if not oldColor then return end
+
+    for _, inst in ipairs(self._screenGui:GetDescendants()) do
+        if inst:IsA("GuiObject") then
+            local ok, bg = pcall(function() return inst.BackgroundColor3 end)
+            if ok and bg == oldColor then
+                inst.BackgroundColor3 = color
             end
-        end)
-
-        local changed = UserInputService.InputChanged:Connect(function(input)
-            if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
-                or input.UserInputType == Enum.UserInputType.Touch) then
-                local delta = input.Position - dragStart
-                target.Position = UDim2.new(
-                    startPos.X.Scale, startPos.X.Offset + delta.X,
-                    startPos.Y.Scale, startPos.Y.Offset + delta.Y
-                )
+            if (inst:IsA("ImageLabel") or inst:IsA("ImageButton")) and not inst:GetAttribute("MUI_NoTheme") then
+                if inst.ImageColor3 == oldColor then
+                    inst.ImageColor3 = color
+                end
             end
-        end)
-
-        local ended = UserInputService.InputEnded:Connect(function(input)
-            if dragging then
-                dragging = false
-                self:_snapIntoView()
+        elseif inst:IsA("UIStroke") then
+            if inst.Color == oldColor then
+                inst.Color = color
             end
-        end)
-
-        self:OnCleanup(function()
-            began:Disconnect()
-            changed:Disconnect()
-            ended:Disconnect()
-        end)
-    end
-
-    -- Off-screen recovery: after a drag (and callable manually), clamps the
-    -- window position so it can never get lost on small screens — 48px of
-    -- width and the header strip always stay visible. Pure clamp, no tween:
-    -- instant correction costs nothing, even on Low quality.
-    function Window:_snapIntoView()
-        local camera = game:GetService("Workspace").CurrentCamera
-        if not camera then return end
-        local viewport = camera.ViewportSize
-
-        local size = self.Root.Size
-        local pos = self.Root.Position
-
-        local x = math.clamp(pos.X.Offset, 48 - size.X.Offset, viewport.X - 48)
-        local y = math.clamp(pos.Y.Offset, 0, viewport.Y - 60)
-
-        self.Root.Position = UDim2.new(pos.X.Scale, x, pos.Y.Scale, y)
-    end
-
-    -- Re-runs the hub after a game teleport by queueing a loader fetch with
-    -- the host's teleport queue (when the executor supports it). Pass your
-    -- own loader URL, or nil for the CornUi default.
-    function Window:PersistAcrossTeleports(loaderUrl)
-        local Host = Modules.Host
-        if not Host then
-            return false, "Host module not loaded"
         end
-
-        local url = loaderUrl or "https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/main/Loader.lua"
-        return Host.QueueOnTeleport(function()
-            local fetchOk, source = Host.HttpGet(url)
-            if not fetchOk then
-                warn("[CornUi] Teleport reload fetch failed: " .. tostring(source))
-                return
-            end
-            local chunk, err = loadstring(source)
-            if not chunk then
-                warn("[CornUi] Teleport reload compile error: " .. tostring(err))
-                return
-            end
-            chunk()
-        end)
     end
 
-    function Window:Destroy()
-        for _, fn in ipairs(self._cleanups or {}) do
-            pcall(fn)
-        end
-        self._cleanups = {}
-        -- Multi-window: drop every command this window (and its elements)
-        -- registered, so the palette never runs something owned by a dead UI.
-        if Modules.Commands then
-            Modules.Commands.Release(self)
-        end
-        self.ScreenGui:Destroy()
+    Theme[key] = color
+end
+
+-- ============================================================
+-- WINDOW: SET BACKGROUND
+-- ============================================================
+
+function WM:SetBackground(input)
+    local config = type(input) == "table" and input or { Texture = input }
+
+    local texture = config.Texture or config.Source or config.Image
+    if type(texture) == "number" then
+        texture = "rbxassetid://" .. tostring(texture)
+    end
+    if type(texture) ~= "string" then
+        warn("[MobileUILib] SetBackground requires a Texture/source string or numeric asset id")
+        return
     end
 
-    ------------------------------------------------------------
-    -- Floating toggle button — shows/hides the Root window.
-    ------------------------------------------------------------
+    texture = texture:gsub("^%s+", ""):gsub("%s+$", "")
+    if texture == "" then
+        warn("[MobileUILib] SetBackground requires a non-empty image source")
+        return
+    end
 
-    function Window:CreateFloatingButton(props)
-        props = props or {}
+    local lower = texture:lower()
+    if not (lower:match("^rbxassetid://") or lower:match("^rbxasset://")) then
+        local looksLikeImage = lower:match("%.png$") or lower:match("%.jpg$") or lower:match("%.jpeg$") or lower:match("%.gif$") or lower:match("%.img$")
+        if looksLikeImage and type(getcustomasset) == "function" then
+            local ok, resolved = pcall(getcustomasset, texture)
+            if ok and type(resolved) == "string" and resolved ~= "" then
+                texture = resolved
+            end
+        end
+    end
 
-        self.FloatButton = Render.New("Frame", {
-            Name = "FloatButton",
-            Size = UDim2.fromOffset(44, 44),
-            Position = props.Position or UDim2.fromOffset(16, 16),
-            CornerRadius = 22,
-            Theme = "Window",
-            Parent = self.ScreenGui,
+    self:ClearBackground()
+
+    local kind = config.Type or "Image"
+    local bg
+    if kind == "Video" then
+        bg = create("VideoFrame", {
+            Name = "MUI_Background",
+            Video = texture,
+            Looped = true,
+            Playing = true,
+            Volume = config.Volume or 0,
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundTransparency = 1,
+            ZIndex = 0,
+        }, { corner(16) })
+    else
+        bg = create("ImageLabel", {
+            Name = "MUI_Background",
+            Image = texture,
+            ScaleType = config.ScaleType or Enum.ScaleType.Crop,
+            TileSize = config.TileSize or UDim2.new(0, 128, 0, 128),
+            ImageTransparency = config.Transparency or config.ImageTransparency or 0,
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundTransparency = 1,
+            ZIndex = 0,
+        }, { corner(16) })
+    end
+    bg:SetAttribute("MUI_NoTheme", true)
+    bg.Parent = self._main
+
+    self._background = bg
+    return bg
+end
+
+function WM:ClearBackground()
+    if self._background then
+        self._background:Destroy()
+        self._background = nil
+    end
+end
+
+-- ============================================================
+-- WINDOW: SET SKIN
+-- ============================================================
+-- Applies a Skin registered via Library:RegisterSkin. See the "SKIN
+-- SYSTEM" comment block near the top of the file for the full shape and
+-- the stated scope of what AccentTexture currently reaches.
+function WM:SetSkin(name)
+    local skin = Library.Skins[name]
+    if not skin then
+        warn("[MobileUILib] SetSkin: no skin registered as '" .. tostring(name) .. "'")
+        return
+    end
+
+    -- 1. Accent + Selected-option texture passes FIRST, while Theme still
+    -- holds the OLD/current values — SetTheme (step 2) only mutates Theme
+    -- in place at the very end of its own run, so this is the same
+    -- "compare against what's still on screen right now" trick SetTheme
+    -- itself uses for colors, just for these two attribute-tagged layers.
+    Library._currentAccentTexture = skin.AccentTexture
+    Library._currentSelectedTexture = skin.SelectedOptionTexture
+    Library._currentAccentTextureTransparency = skin.AccentTextureTransparency or 0.25
+    Library._currentSelectedTextureTransparency = skin.SelectedOptionTextureTransparency or 0.25
+    for _, inst in ipairs(self._screenGui:GetDescendants()) do
+        if inst:IsA("GuiObject") then
+            local ok, bg = pcall(function() return inst.BackgroundColor3 end)
+            local isAccentColored = ok and tostring(bg) == tostring(Theme.Accent)
+
+            if inst:GetAttribute("MUI_AccentSurface") then
+                Library:_applyAccentOverlay(inst, isAccentColored)
+            end
+            if inst:GetAttribute("MUI_SelectedSurface") then
+                Library:_applySelectedOverlay(inst, isAccentColored)
+            end
+        end
+    end
+
+    -- 2. Whole-UI texture pass — every currently-on-screen surface whose
+    -- fill is one of the "container" theme colors (header bar, sidebar,
+    -- panels, cards) gets the overlay, NOT just attribute-tagged ones.
+    -- Unlike AccentTexture/SelectedOptionTexture this needs no per-element
+    -- tagging: virtually every Frame in this file is colored directly from
+    -- one of these Theme keys at creation, so a plain color-match already
+    -- catches everything currently visible. Deliberately excludes Accent
+    -- (that's AccentTexture/SelectedOptionTexture's job) and Text/SubText/
+    -- Stroke (texturing a text color or a 1px border isn't meaningful).
+    local SURFACE_KEYS = { "Background", "Header", "Element", "ElementHover", "ToggleButton" }
+    local surfaceColorSet = {}
+    for _, key in ipairs(SURFACE_KEYS) do
+        surfaceColorSet[tostring(Theme[key])] = true
+    end
+    local windowTextureApplied, windowTextureSkippedLayout = 0, 0
+    for _, inst in ipairs(self._screenGui:GetDescendants()) do
+        if inst:IsA("GuiObject") and inst.Name ~= "MUI_WindowTexture" then
+            local ok, bg = pcall(function() return inst.BackgroundColor3 end)
+            local isSurface = ok and surfaceColorSet[tostring(bg)]
+            if isSurface and skin.WindowTexture then
+                if hasChildLayout(inst) then
+                    windowTextureSkippedLayout += 1
+                else
+                    windowTextureApplied += 1
+                end
+            end
+            Library:_applyTiledOverlay(inst, "MUI_WindowTexture", isSurface, skin.WindowTexture, skin.WindowTextureTransparency or 0.12)
+        end
+    end
+    if skin.WindowTexture then
+        print("[MobileUILib] SetSkin: WindowTexture applied to " .. windowTextureApplied .. " surface(s), skipped " .. windowTextureSkippedLayout .. " (layout-managed)")
+    end
+
+    -- 3. Colors — delegate entirely to the existing theme machinery so
+    -- color-swapping behavior doesn't change at all.
+    if type(skin.Theme) == "string" then
+        self:SetTheme(skin.Theme)
+    elseif type(skin.Theme) == "table" then
+        Library:RegisterTheme("__skin_" .. name, skin.Theme)
+        self:SetTheme("__skin_" .. name)
+    end
+
+    -- 4. Fonts — same reverse-lookup trick SetTheme uses for colors, but
+    -- keyed on Font instead of Color3. Every label/button/textbox in this
+    -- file only ever uses a small handful of Enum.Font values
+    -- (Gotham/GothamMedium/GothamBold), so this needs no per-element
+    -- tagging to work. Tries FontFace (the modern custom-font datatype)
+    -- first, falls back to legacy Font for values that are plain
+    -- Enum.Font entries rather than Font.new(...) objects.
+    if skin.Fonts then
+        local fontMap = {
+            [tostring(Enum.Font.GothamBold)] = skin.Fonts.Header,
+            [tostring(Enum.Font.GothamMedium)] = skin.Fonts.Accent,
+            [tostring(Enum.Font.Gotham)] = skin.Fonts.Body,
+        }
+        for _, inst in ipairs(self._screenGui:GetDescendants()) do
+            if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
+                local newFont = fontMap[tostring(inst.Font)]
+                if newFont then
+                    local success, err = pcall(function()
+                        inst.FontFace = newFont -- Custom Font datatype
+                    end)
+                    if not success then
+                        local fallbackSuccess = pcall(function()
+                            inst.Font = newFont -- Legacy Enum.Font fallback
+                        end)
+                        if not fallbackSuccess then
+                            warn("[MobileUILib] Failed to apply font to " .. inst:GetFullName() .. ": " .. tostring(err))
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- 5. Window BACKGROUND texture — reuses SetBackground wholesale
+    -- (tiled, dulled by default) instead of a second parallel image-overlay
+    -- system. This is what used to be called WindowTexture. Only touches
+    -- the background if this skin actually specifies one — an unrelated
+    -- background set independently is left alone otherwise.
+    if skin.WindowBGTexture then
+        self:SetBackground({
+            Texture = skin.WindowBGTexture,
+            Type = "Image",
+            ScaleType = Enum.ScaleType.Tile,
+            Transparency = skin.WindowBGTextureTransparency or 0.85,
         })
+    end
 
-        if props.Icon then
-            Render.New("Icon", {
-                Image = props.Icon,
-                Size = UDim2.fromOffset(22, 22),
-                Position = UDim2.fromOffset(11, 11),
-                Theme = false,
-                Parent = self.FloatButton,
-            })
-        else
-            -- Default face: a small gold dot. (Keeps the "KernelChip" name —
-            -- compat hides it when a custom float icon is configured.)
-            Render.New("Frame", {
-                Name = "KernelChip",
-                Size = UDim2.fromOffset(10, 10),
-                Position = UDim2.fromOffset(17, 17),
-                CornerRadius = 5,
-                Theme = "Enabled",
-                Parent = self.FloatButton,
-            })
+    Library._currentSkinName = name
+end
+
+-- ============================================================
+-- WINDOW: COMMANDS
+-- ============================================================
+
+function WM:RegisterCommand(keyword, fn)
+    self._commands[tostring(keyword):lower()] = fn
+end
+
+function WM:SetSpotlight(active)
+    if active then
+        self._spotlightCount += 1
+    else
+        self._spotlightCount = math.max(0, self._spotlightCount - 1)
+    end
+    local shouldShow = self._spotlightCount > 0
+    self._spotlightOverlay.Active = shouldShow
+    tween(self._spotlightOverlay, { BackgroundTransparency = shouldShow and 0.5 or 1 }, 0.2)
+end
+
+function WM:SetCornerRadius(radius)
+    local main = self._main
+    local corners = main:FindFirstChild("UICorner")
+    if corners then
+        corners.CornerRadius = UDim.new(0, radius)
+    end
+
+    for _, child in ipairs(main:GetDescendants()) do
+        if child:IsA("UICorner") then
+            child.CornerRadius = UDim.new(0, radius)
         end
+    end
+end
 
-        local button = Instance.new("TextButton")
-        button.BackgroundTransparency = 1
-        button.Text = ""
-        button.Size = UDim2.fromScale(1, 1)
-        button.ZIndex = self.FloatButton.ZIndex + 1
-        button.Parent = self.FloatButton
+function WM:SetOpacity(transparency)
+    local main = self._main
+    if transparency >= 0 and transparency <= 1 then
+        main.BackgroundTransparency = transparency
+    end
+end
 
-        local open = true
-        local UserInputService = game:GetService("UserInputService")
+function WM:GetActiveTab()
+    return self._currentPageEntry
+end
 
-        -- Drag-to-reposition, since it floats on screen persistently. A press
-        -- that moves less than 6px still counts as a click (toggles window
-        -- visibility); anything further is a drag and must not toggle.
-        local dragging, dragStart, startPos = false, nil, nil
-        local moved = false
+-- (seam) v1.9.4d lines 2797-2799 set the file-local `animationSpeed`
 
-        button.MouseButton1Click:Connect(function()
-            if moved then
-                moved = false
-                return
-            end
-            open = not open
-            self:SetVisible(open)
-        end)
+-- directly; that local lives in Render now, so this forwards. Behavior
 
-        local began = button.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-                or input.UserInputType == Enum.UserInputType.Touch then
-                dragging = true
-                moved = false
-                dragStart = input.Position
-                startPos = self.FloatButton.Position
-            end
-        end)
+-- identical, one line adapted:
 
-        local changed = UserInputService.InputChanged:Connect(function(input)
-            if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
-                or input.UserInputType == Enum.UserInputType.Touch) then
-                local delta = input.Position - dragStart
-                if math.abs(delta.X) + math.abs(delta.Y) > 6 then
-                    moved = true
+function WM:SetAnimationSpeed(factor)
+
+    Render.SetAnimationSpeed(factor)
+
+end
+
+-- ============ WINDOW METHODS cont. (lines 2801-3061) ============
+
+function WM:SetBlur(amount)
+    self._blurAmount = math.clamp(amount, 0, 1)
+    local main = self._main
+    if amount > 0 then
+        main.BackgroundTransparency = math.min(main.BackgroundTransparency + amount * 0.3, 0.95)
+    else
+        main.BackgroundTransparency = 0.1
+    end
+end
+
+function WM:SetShadow(enable)
+    self._shadowEnabled = enable
+    local main = self._main
+    local shadow = main:FindFirstChild("_Shadow")
+    if enable then
+        if not shadow then
+            shadow = create("Frame", {
+                Name = "_Shadow",
+                Size = UDim2.new(1, 0, 1, 0),
+                Position = UDim2.new(0, 3, 0, 3),
+                BackgroundColor3 = Color3.new(0, 0, 0),
+                BackgroundTransparency = 0.7,
+                BorderSizePixel = 0,
+                ZIndex = -1,
+            }, { corner(16) })
+            shadow.Parent = main
+        end
+    else
+        if shadow then shadow:Destroy() end
+    end
+end
+
+function WM:ExportConfig(name)
+    return Library:ExportConfig(name)
+end
+
+function WM:ImportConfig(jsonText)
+    return Library:ImportConfig(jsonText, self)
+end
+
+-- ============================================================
+-- WINDOW: CREATE TAB
+-- ============================================================
+
+function WM:CreateTab(name, config)
+    config = config or {}
+    local touch = self._touch
+    local iconId = config.Icon
+    if iconId and type(iconId) == "number" then
+        iconId = "rbxassetid://" .. tostring(iconId)
+    elseif iconId and type(iconId) == "string" and not iconId:match("^rbxassetid://") then
+        iconId = "rbxassetid://" .. iconId
+    end
+
+    local tabButton = create("TextButton", {
+        Text = "",
+        BackgroundColor3 = Theme.Element,
+        Size = UDim2.new(1, 0, 0, touch and 40 or 30),
+        AutoButtonColor = false,
+    }, { corner(10) })
+    tabButton.Parent = self._tabList
+    tabButton:SetAttribute("MUI_SelectedSurface", true) -- eligible for a Skin's SelectedOptionTexture while this tab is active
+
+    local contentRow = create("Frame", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+    }, {
+        create("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            Padding = UDim.new(0, 8),
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+        }),
+        create("UIPadding", { PaddingLeft = UDim.new(0, 10) }),
+    })
+    contentRow.Parent = tabButton
+
+    local iconLabel
+    if iconId then
+        local iconSize = touch and 20 or 16
+        iconLabel = create("ImageLabel", {
+            Image = iconId,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0, iconSize, 0, iconSize),
+            ImageColor3 = Theme.SubText,
+            ScaleType = Enum.ScaleType.Fit,
+        })
+        iconLabel.Parent = contentRow
+    end
+
+    local tabLabel = create("TextLabel", {
+        Text = name,
+        Font = Enum.Font.GothamBold,
+        TextSize = touch and 15 or 13,
+        TextColor3 = Theme.SubText,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, iconId and -34 or -10, 1, 0),
+        TextXAlignment = Enum.TextXAlignment.Left,
+    })
+    tabLabel.Parent = contentRow
+
+    local page = create("ScrollingFrame", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ScrollBarThickness = touch and 6 or 4,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        Visible = false,
+    }, {
+        create("UIListLayout", {
+            Padding = UDim.new(0, 8),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+        }),
+        create("UIPadding", {
+            PaddingTop = UDim.new(0, 10),
+            PaddingLeft = UDim.new(0, 10),
+            PaddingRight = UDim.new(0, 10),
+            PaddingBottom = UDim.new(0, 10),
+        }),
+    })
+    page.Parent = self._pages
+
+    local Tab = setmetatable({
+        _page = page,
+        _touch = touch,
+        _window = self,
+        _screenGui = self._screenGui,
+        _tabIndex = #self._tabs + 1,
+    }, { __index = Library.TabMethods })
+
+    local tabEntry = { button = tabButton, page = page, label = tabLabel, icon = iconLabel, glow = nil, glowTween = nil }
+    table.insert(self._tabs, tabEntry)
+
+    local function selectTab()
+        if self._currentPageEntry == tabEntry then return end
+
+        for _, t in pairs(self._tabs) do
+            if t ~= tabEntry then
+                tween(t.button, { BackgroundColor3 = Theme.Element }, 0.1)
+                tween(t.label, { TextColor3 = Theme.SubText }, 0.1)
+                if t.icon then tween(t.icon, { ImageColor3 = Theme.SubText }, 0.1) end
+                if t.glow then
+                    stopBreathingGlow(t.glow, t.glowTween)
+                    t.glow, t.glowTween = nil, nil
                 end
-                self.FloatButton.Position = UDim2.new(
-                    startPos.X.Scale, startPos.X.Offset + delta.X,
-                    startPos.Y.Scale, startPos.Y.Offset + delta.Y
-                )
-            end
-        end)
-
-        local ended = UserInputService.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-                or input.UserInputType == Enum.UserInputType.Touch then
-                dragging = false
-            end
-        end)
-
-        self:OnCleanup(function()
-            began:Disconnect()
-            changed:Disconnect()
-            ended:Disconnect()
-        end)
-    end
-
-    ------------------------------------------------------------
-    -- Spotlight dimming — darkens the background behind the Root window.
-    ------------------------------------------------------------
-
-    function Window:CreateSpotlight(props)
-        props = props or {}
-
-        self.Spotlight = Instance.new("Frame")
-        self.Spotlight.Name = "Spotlight"
-        self.Spotlight.Size = UDim2.fromScale(1, 1)
-        self.Spotlight.BackgroundColor3 = Color3.new(0, 0, 0)
-        self.Spotlight.BackgroundTransparency = 1
-        self.Spotlight.BorderSizePixel = 0
-        self.Spotlight.ZIndex = self.Root.ZIndex - 1
-        self.Spotlight.Parent = self.ScreenGui
-
-        self.SpotlightMaxTransparency = 1 - (props.Dimness or 0.5)
-
-        local blockInput = Instance.new("TextButton")
-        blockInput.BackgroundTransparency = 1
-        blockInput.Text = ""
-        blockInput.Size = UDim2.fromScale(1, 1)
-        blockInput.ZIndex = self.Spotlight.ZIndex
-        blockInput.Parent = self.Spotlight
-    end
-
-    ------------------------------------------------------------
-    -- Intro — a 0.2s fade-in, nothing more. The v2 frost/shatter overlay
-    -- (full-screen navy box + 9 shard tweens gating Root.Visible) stranded
-    -- windows on several executors and is gone for good: the window is
-    -- NEVER hidden by the intro, with or without motion.
-    ------------------------------------------------------------
-
-    function Window:PlayIntro(props)
-        props = props or {}
-        self.Root.Visible = true
-
-        if not Render.Motion() then
-            self.Root.BackgroundTransparency = 0
-            return
-        end
-
-        self.Root.BackgroundTransparency = 1
-        local TweenService = game:GetService("TweenService")
-        TweenService:Create(self.Root, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            BackgroundTransparency = 0,
-        }):Play()
-    end
-
-    -- Shared by the floating button and manual calls — shows/hides Root
-    -- and fades the Spotlight dimmer (if created) to match.
-    function Window:SetVisible(visible)
-        self.Root.Visible = visible
-
-        if not visible and self.CloseCommandPalette then
-            pcall(self.CloseCommandPalette, self)
-        end
-
-        if self.Spotlight then
-            local TweenService = game:GetService("TweenService")
-            TweenService:Create(self.Spotlight, TweenInfo.new(0.2), {
-                BackgroundTransparency = visible and self.SpotlightMaxTransparency or 1,
-            }):Play()
-        end
-    end
-
-    -- Minimize: collapse the window to its header strip (drag stays). The
-    -- body (sidebar + page holder) is hidden and the Root shrinks to a
-    -- header-tall bar; restoring puts the exact original size back. Instant
-    -- on Low quality, one tween otherwise.
-    function Window:SetMinimized(minimized)
-        -- Titleless windows have no chip to restore from — never collapse them.
-        if not self.Header:FindFirstChild("MinimizeChip") then return end
-        minimized = minimized and true or false
-        if self._minimized == minimized then return end
-        self._minimized = minimized
-
-        if minimized then
-            self._restoreSize = self.Root.Size
-            if self.CloseCommandPalette then
-                pcall(self.CloseCommandPalette, self)
+                Library:_applySelectedOverlay(t.button, false)
             end
         end
 
-        local restore = self._restoreSize or self.Root.Size
-        local collapsedHeight = Tokens.TitleHeight + 8
+        tween(tabButton, { BackgroundColor3 = Theme.Accent }, 0.1)
+        tween(tabLabel, { TextColor3 = Theme.TextOnAccent }, 0.1)
+        if iconLabel then tween(iconLabel, { ImageColor3 = Theme.TextOnAccent }, 0.1) end
+        tabEntry.glow, tabEntry.glowTween = startBreathingGlow(tabButton, Theme.Accent)
+        Library:_applySelectedOverlay(tabButton, true)
 
-        self.Sidebar.Visible = not minimized
-        self.PageHolder.Visible = not minimized
-
-        local targetSize = minimized
-            and UDim2.new(restore.X.Scale, restore.X.Offset, 0, collapsedHeight)
-            or restore
-
-        if Render.Motion() then
-            local TweenService = game:GetService("TweenService")
-            TweenService:Create(self.Root, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                Size = targetSize,
-            }):Play()
+        local previousEntry = self._currentPageEntry
+        if previousEntry and previousEntry.page ~= page then
+            local oldPage = previousEntry.page
+            oldPage.Position = UDim2.new(0, 0, 0, 0)
+            page.Position = UDim2.new(1, 0, 0, 0)
+            page.Visible = true
+            tween(oldPage, { Position = UDim2.new(-1, 0, 0, 0) }, 0.25)
+            tween(page, { Position = UDim2.new(0, 0, 0, 0) }, 0.25)
+            task.delay(0.25, function()
+                oldPage.Visible = false
+                oldPage.Position = UDim2.new(0, 0, 0, 0)
+            end)
         else
-            self.Root.Size = targetSize
+            page.Position = UDim2.new(0, 0, 0, 0)
+            page.Visible = true
+        end
+
+        self._currentPageEntry = tabEntry
+    end
+
+    tabButton.MouseButton1Click:Connect(selectTab)
+
+    tabButton.MouseEnter:Connect(function()
+        if self._currentPageEntry ~= tabEntry and not tabButton:FindFirstChild("_HoverGlow") then
+            create("UIStroke", { Name = "_HoverGlow", Color = Theme.Accent, Thickness = 1.5, Transparency = 0.5 }).Parent = tabButton
+        end
+    end)
+    tabButton.MouseLeave:Connect(function()
+        local s = tabButton:FindFirstChild("_HoverGlow")
+        if s then s:Destroy() end
+    end)
+
+    if self._firstTab then
+        self._firstTab = false
+        selectTab()
+    end
+
+    return Tab
+end
+
+-- ============================================================
+-- TAB METHODS
+-- ============================================================
+
+Library.TabMethods = {}
+local TM = Library.TabMethods
+
+-- ============================================================
+-- WRAP ELEMENT
+-- ============================================================
+
+function Library:_wrapElement(root, value)
+    local handle
+    if type(value) == "table" then
+        handle = value
+    else
+        handle = {}
+    end
+    if handle.Instance == nil then handle.Instance = root end
+
+    handle.Destroy = handle.Destroy or function(_)
+        if root and root.Parent then root:Destroy() end
+    end
+
+    handle.SetVisible = handle.SetVisible or function(_, visible)
+        if root then root.Visible = visible end
+    end
+
+    handle.SetDisabled = handle.SetDisabled or function(_, disabled)
+        if not root then return end
+        local overlay = root:FindFirstChild("MUI_DisabledOverlay")
+        if disabled then
+            if not overlay then
+                overlay = create("Frame", {
+                    Name = "MUI_DisabledOverlay",
+                    Size = UDim2.new(1, 0, 1, 0),
+                    BackgroundColor3 = Theme.Background,
+                    BackgroundTransparency = 0.45,
+                    ZIndex = 1000,
+                    Active = true,
+                })
+                overlay.Parent = root
+            end
+        elseif overlay then
+            overlay:Destroy()
         end
     end
 
-    function Window:IsMinimized()
-        return self._minimized and true or false
+    handle.Refresh = handle.Refresh or function(self_)
+        if self_.Set and self_.Get then
+            local ok, current = pcall(self_.Get, self_)
+            if ok then pcall(self_.Set, self_, current) end
+        end
     end
 
-    -- Exposed so Elements/* can attach sugar methods, e.g.:
-    --   Modules.Window.Section.CreateToggle = function(section, props) ... end
-    WindowModule.Section = Section
-    WindowModule.Tab = Tab
-    WindowModule.Window = Window
-    WindowModule.Stack = { Attach = attachStack } -- for Cards / custom hosts
+    handle.PlaySound = function(_, soundId, volume)
+        Library:PlaySound(soundId, volume)
+    end
 
-    return WindowModule
+    handle.PlayHaptic = function(_, variant)
+        Library:PlayHaptic(variant)
+    end
+
+    return handle
+end
+
+    -- Module export (ours): the shell entry points for the other modules.
+    return {
+        CreateWindow = Library.CreateWindow,
+        WindowMethods = Library.WindowMethods,
+        TabMethods = Library.TabMethods,
+        _wrapElement = Library._wrapElement,
+    }
+
 end

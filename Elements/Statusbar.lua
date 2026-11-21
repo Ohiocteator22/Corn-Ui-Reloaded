@@ -1,139 +1,135 @@
 --[[
-    CornUi v2.2 — Elements/Statusbar.lua
-    Registers Window:CreateStatusbar(props) and Window:EnableAutoQuality().
+    CornUi v1.9.4d (modular) — Elements/Statusbar.lua
 
-    CreateStatusbar makes a small draggable pill that reports live
-    device/session stats:
-      FPS   — counted from RunService.RenderStepped, flushed every
-              props.FpsWindow seconds (default 1)
-      MEM   — Lua GC usage from gcinfo(), formatted in MB
-      TIER  — Touch / PC / Pad / Roblox, from UserInputService flags
+    ADDITION over the v1.9.4d window (the shell is untouched). Registers on
+    WindowMethods:
 
-    EnableAutoQuality detects touch devices with small viewports and drops
-    the render quality to Low once, with a toast explaining why.
+        window:CreateStatusbar(props)   -- draggable FPS / memory / tier pill
+        window:EnableAutoQuality()      -- drop to Low quality once, with a toast
 
-    Polling design: no while-loops and no scheduled work between frames —
-    frames are counted on RenderStepped and flushed inline when the sample
-    window elapses. The standing cost is one connection plus one os.clock()
-    call per frame.
+    CreateStatusbar builds a small pill parented to the window's ScreenGui,
+    styled from the live Theme table, dragged with the verbatim
+    Render.makeDraggable helper:
+
+      FPS   — RenderStepped frames counted, flushed every props.FpsWindow
+              seconds (default 1)
+      MEM   — gcinfo() in MB
+      TIER  — Touch / PC / Pad, from UserInputService flags
+
+    Poll-free by design: no while-loops and no scheduled work between
+    frames — frames are counted on RenderStepped and the label is flushed
+    inline when the sample window elapses. The standing cost is one
+    connection plus one os.clock() call per frame.
 ]]
 
 return function(Modules)
 
+    local Library = Modules
     local Render = Modules.Render
-    local Window = Modules.Window.Window
-    local RunService = game:GetService("RunService")
-    local UserInputService = game:GetService("UserInputService")
+    local Theme = Modules.Theme.Theme
+    local WM = Modules.WindowMethods
+    local RunService = Render.RunService
+    local UserInputService = Render.UserInputService
+    local create = Render.create
+    local corner = Render.corner
+    local stroke = Render.stroke
+    local makeDraggable = Render.makeDraggable
 
-    local function deviceTier(uis)
-        if uis.TouchEnabled then
+    local autoQualityDone = false
+
+    local function deviceTier()
+        if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
             return "Touch"
-        elseif uis.KeyboardEnabled then
-            return "PC"
-        elseif uis.GamepadEnabled then
+        elseif UserInputService.GamepadEnabled then
             return "Pad"
+        elseif UserInputService.KeyboardEnabled then
+            return "PC"
         end
         return "Roblox"
     end
 
-    ------------------------------------------------------------
-    -- Statusbar
-    ------------------------------------------------------------
-
-    function Window:CreateStatusbar(props)
+    function WM:CreateStatusbar(props)
         props = props or {}
-        local fpsWindow = props.FpsWindow or 1
+        local window = self
+        local touch = self._touch
 
-        local bar = Render.New("Frame", {
+        local pill = create("Frame", {
             Name = "Statusbar",
-            Size = UDim2.fromOffset(178, 28),
-            Position = props.Position or UDim2.fromOffset(16, 72),
-            CornerRadius = 14,
-            Theme = "Window",
-            Parent = self.ScreenGui,
+            Size = UDim2.new(0, props.Width or (touch and 190 or 210), 0, props.Height or 30),
+            Position = props.Position or UDim2.new(0, 12, 1, -42),
+            BackgroundColor3 = Theme.Header,
+            BorderSizePixel = 0,
+            ZIndex = 200,
+        }, { corner(10), stroke(Theme.Stroke, 1) })
+        pill.Parent = self._screenGui
+
+        local label = create("TextLabel", {
+            Name = "Stats",
+            Text = "FPS --  MEM --  " .. deviceTier(),
+            Font = Enum.Font.GothamMedium,
+            TextSize = touch and 12 or 13,
+            TextColor3 = Theme.Text,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, -16, 1, 0),
+            Position = UDim2.new(0, 8, 0, 0),
+            TextXAlignment = Enum.TextXAlignment.Left,
+            ZIndex = 201,
         })
+        label.Parent = pill
 
-        local layout = Instance.new("UIListLayout")
-        layout.FillDirection = Enum.FillDirection.Horizontal
-        layout.VerticalAlignment = Enum.VerticalAlignment.Center
-        layout.SortOrder = Enum.SortOrder.LayoutOrder
-        layout.Padding = UDim.new(0, 8)
-        layout.Parent = bar
+        makeDraggable(pill, pill, false)
 
-        local pad = Instance.new("UIPadding")
-        pad.PaddingLeft = UDim.new(0, 10)
-        pad.PaddingRight = UDim.new(0, 10)
-        pad.Parent = bar
-
-        local fpsText = Render.New("Text", {
-            Name = "FPS", Text = "-- fps", TextSize = 12,
-            Size = UDim2.fromOffset(52, 16), Theme = "Muted", Parent = bar,
-        })
-        local memText = Render.New("Text", {
-            Name = "MEM", Text = "-- M", TextSize = 12,
-            Size = UDim2.fromOffset(46, 16), Theme = "Muted", Parent = bar,
-        })
-        local tierText = Render.New("Text", {
-            Name = "TIER", Text = deviceTier(UserInputService), TextSize = 12,
-            Size = UDim2.fromOffset(44, 16), Theme = "Muted", Parent = bar,
-        })
-
-        -- Draggable via the window's shared drag implementation (the bar is
-        -- its own handle; its text children don't sink input). Drag-end
-        -- cleanup and off-screen recovery come along for free.
-        self:_makeDraggable(bar, bar)
-
+        local fpsWindow = props.FpsWindow or 1
         local frames = 0
-        local sampleStart = os.clock()
-
-        local renderConn = RunService.RenderStepped:Connect(function()
-            frames += 1
-            local elapsed = os.clock() - sampleStart
-            if elapsed >= fpsWindow then
-                local fps = math.floor(frames / math.max(elapsed, 0.05) + 0.5)
-                fpsText.Text = fps .. " fps"
-                memText.Text = string.format("%.1fM", gcinfo() / 1024)
+        local windowStart = os.clock()
+        local conn = RunService.RenderStepped:Connect(function()
+            frames = frames + 1
+            local now = os.clock()
+            if now - windowStart >= fpsWindow then
+                local fps = math.floor(frames / (now - windowStart) + 0.5)
+                local mem = math.floor((gcinfo and gcinfo() or 0) / 1024 + 0.5)
+                label.Text = ("FPS %d  MEM %dMB  %s"):format(fps, mem, deviceTier())
                 frames = 0
-                sampleStart = os.clock()
+                windowStart = now
             end
         end)
 
-        self:OnCleanup(function()
-            renderConn:Disconnect()
+        pill.AncestryChanged:Connect(function(_, parent)
+            if not parent and conn then conn:Disconnect() end
         end)
 
-        return bar
+        return {
+            Instance = pill,
+            Destroy = function(_)
+                if conn then conn:Disconnect() end
+                if pill and pill.Parent then pill:Destroy() end
+            end,
+            SetVisible = function(_, visible)
+                pill.Visible = visible and true or false
+            end,
+        }
     end
 
-    ------------------------------------------------------------
-    -- Auto quality — one-time, opt-in: touch device + small viewport
-    -- -> Low quality, with a toast so the user knows why animations
-    -- disappeared.
-    ------------------------------------------------------------
+    function WM:EnableAutoQuality()
+        if autoQualityDone then return false end
+        autoQualityDone = true
 
-    function Window:EnableAutoQuality()
-        local okTouch, touch = pcall(function() return UserInputService.TouchEnabled end)
-        if not okTouch or not touch then
-            return false
-        end
+        local camera = workspace.CurrentCamera
+        local viewportY = camera and camera.ViewportSize and camera.ViewportSize.Y or 720
+        local isTouch = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
 
-        local camera = game:GetService("Workspace").CurrentCamera
-        if not (camera and camera.ViewportSize) then
-            return false
-        end
-
-        if camera.ViewportSize.Y >= 800 then
-            return false
-        end
-
-        Render.SetQuality("Low")
-        if self.NotifHolder and self.Notify then
-            pcall(self.Notify, self, {
-                Title = "CornUi",
-                Text = "Small touch device detected — animation quality set to Low for performance.",
-                Type = "Success",
+        if isTouch and viewportY < 700 then
+            Library:SetFlag("PerformanceMode", true)
+            Library:SetFlag("ReducedMotion", true)
+            self:Notify({
+                Title = "Auto Quality",
+                Content = "Small touch device detected — effects reduced for smoother FPS.",
+                Type = "info",
             })
+            return true
         end
-        return true
+        return false
     end
+
+    return { CreateStatusbar = WM.CreateStatusbar }
 end

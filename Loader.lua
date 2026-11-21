@@ -1,9 +1,13 @@
 --[[
-    CornUi v2.0 - Loader.lua
+    CornUi v1.9.4d (modular) - Loader.lua
     This is the ONE file users loadstring. It burst-fetches every module
     over HTTP in parallel, then executes them in dependency order (fetch
     being parallel is just an I/O win (Lua execution is still serial,
     so order here is what actually matters for correctness).
+
+    Every module file below is the v1.9.4d source split verbatim along the
+    same seams; the loader's shared table IS the Library facade, so the
+    v1 API behaves exactly as the original monolith shipped.
 
     Usage (v1.9.3 API, unchanged):
         local Library = loadstring(game:HttpGet(
@@ -21,9 +25,13 @@
             Increment = 5, Default = 50 })
         window:Notify({ Title = "Loaded", Content = "CornUi ready." })
 
-    v2 additions ride on top of that surface: Stepper, Cycle, CommandPalette,
-    Statusbar, Plugins, Host, Theme.Set("Cyber"), window:EnableWebhook(url),
-    window:EnableAutoSave(name, seconds), CornUi.SetQuality("Low"), and more.
+    Additions ride ON TOP of that surface (never instead of it):
+        window:OpenCommandPalette(config)   -- fuzzy palette over window
+                                            --   commands + Cornelius + tabs
+        window:CreateStatusbar(props)       -- draggable FPS/memory pill
+        Library:LoadPlugins(urls, window)   -- plugin system (v1.9.4d)
+        Library:RegisterSkin(name, def)     -- custom themes + fonts + textures
+        CornUi.SetQuality("Low")            -- Performance/ReducedMotion flags
 ]]
 
 local BASE = "https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/main/"
@@ -33,14 +41,14 @@ local BASE = "https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/m
 -- immediately on execution (not lazily), so dependencies must already be
 -- populated in Modules by the time a later entry executes.
 --
---   Render, Theme, Window  -> no inter-dependencies, but everything after needs them
---   Flags                  -> independent
---   Host                   -> independent (executor HTTP / clipboard / teleport queue)
---   Commands               -> independent
---   Config                 -> reads Modules.Flags + Modules.Host at exec time
---   Plugins                -> independent (reads Modules.* lazily, inside functions)
---   Elements/*             -> read Modules.Render / Modules.Theme / Modules.Flags /
---                             Modules.Window.Section / Modules.Window.Window at exec time
+--   Render                 -> services + verbatim helpers (create/tween/drag/...)
+--   Theme                  -> Themes presets + live Theme table + Skin system
+--   Flags                  -> flag/keybind/notification state on the facade
+--   Commands               -> global Cornelius (command/guide/pack system)
+--   Window                 -> CreateWindow + WindowMethods + TabMethods (shell + intro)
+--   Config / Plugins       -> facade methods, read Modules.* lazily inside functions
+--   Elements/*             -> register TM:Create___ onto Modules.TabMethods
+--   Compat                 -> last: asserts the verbatim API surface landed
 local Manifest = {
     { Name = "Render",             Path = "Core/Render.lua" },
     { Name = "Theme",              Path = "Core/Theme.lua" },
@@ -105,7 +113,7 @@ while pending > 0 do
 end
 
 if next(FetchErrors) then
-    local lines = { "CornUi v2.0 failed to fetch required modules:" }
+    local lines = { "CornUi v1.9.4d failed to fetch required modules:" }
     for name, err in pairs(FetchErrors) do
         table.insert(lines, ("  - %s: %s"):format(name, tostring(err)))
     end
@@ -121,7 +129,7 @@ local Modules = {}
 for _, entry in ipairs(Manifest) do
     local chunk, compileErr = loadstring(Sources[entry.Name], "CornUi/" .. entry.Name)
     if not chunk then
-        error(("CornUi v2.0 failed to compile module '%s': %s"):format(entry.Name, tostring(compileErr)))
+        error(("CornUi v1.9.4d failed to compile module '%s': %s"):format(entry.Name, tostring(compileErr)))
     end
 
     -- Every module file is `return function(Modules) ... end`: the chunk
@@ -130,24 +138,31 @@ for _, entry in ipairs(Manifest) do
     -- stores bare functions and the whole library never boots.
     local ok, factory = pcall(chunk)
     if not ok then
-        error(("CornUi v2.0 failed to load module '%s': %s"):format(entry.Name, tostring(factory)))
+        error(("CornUi v1.9.4d failed to load module '%s': %s"):format(entry.Name, tostring(factory)))
     end
 
     local ok2, result = pcall(factory, Modules)
     if not ok2 then
-        error(("CornUi v2.0 failed to load module '%s': %s"):format(entry.Name, tostring(result)))
+        error(("CornUi v1.9.4d failed to load module '%s': %s"):format(entry.Name, tostring(result)))
     end
 
-    Modules[entry.Name] = result
+    -- Most modules mutate the shared table directly and return nothing;
+    -- a few (Render/Theme/Window/Host/...) return their export table. Never
+    -- overwrite a facade key a module already populated with a nil result.
+    if result ~= nil then
+        Modules[entry.Name] = result
+    end
 end
 
-Modules.Version = "2.2.0"
-
--- Top-level convenience: quality switch for weak devices.
---   CornUi.SetQuality("Low")   -- no tweens, no intro, no strokes
+-- Top-level convenience: quality switch for weak devices — maps onto the
+-- v1.9.4d flags (no tweens, no sheen, no intro when Low).
+--   CornUi.SetQuality("Low")   -- PerformanceMode + ReducedMotion + no intro
 --   CornUi.SetQuality("High")  -- full polish (default)
 Modules.SetQuality = function(level)
-    Modules.Render.SetQuality(level)
+    local low = tostring(level):lower() == "low"
+    Modules:SetFlag("PerformanceMode", low)
+    Modules:SetFlag("ReducedMotion", low)
+    if low then Modules:SetFlag("ShowIntro", false) end
 end
 
 return Modules

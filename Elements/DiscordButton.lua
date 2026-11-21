@@ -1,91 +1,140 @@
 --[[
-    CornUi v2.0 — Elements/DiscordButton.lua
-    Registers Section:CreateDiscordButton(props).
+    CreateDiscordButton — verbatim v1.9.4d.
 
-    props = {
-        Title = "Join our Discord",
-        Invite = "https://discord.gg/...",
-        Icon = "rbxassetid://...",   -- optional custom icon, defaults to a generic icon-less layout
-    }
-
-    Clicking copies the invite link to clipboard (via setclipboard, if the
-    executor supports it) and fires props.OnClick if provided — Roblox
-    clients can't open external URLs directly from a script.
+    The Lua below is the v1.9.4d source, verbatim, split out of the original
+    monolith. Only the prelude (binding the monolith's file-local upvalues to
+    the module table) and the trailing module export are ours; the bodies are
+    byte-identical to upload/CornUi.lua lines 4378-4484. The window chrome,
+    intro, stacking and every element behave exactly as v1.9.4d shipped.
 ]]
 
+-- CornUi v1.9.4d (modular) — Elements/DiscordButton.lua
 return function(Modules)
-
+    -- Verbatim-body prelude (the only non-v1.9.4d code in this file): binds
+    -- the monolith's file-local upvalues to the module system. The loader's
+    -- shared table IS the facade, so `Library.X` below reads exactly like
+    -- the v1.9.4d source; every extracted body is byte-identical to it.
+    local Library = Modules
     local Render = Modules.Render
-    local Section = Modules.Window.Section
+    local Theme = Modules.Theme.Theme
+    local TM = Modules.TabMethods
+    local UserInputService = Render.UserInputService
+    local TweenService = Render.TweenService
+    local RunService = Render.RunService
+    local create = Render.create
+    local corner = Render.corner
+    local setSearchMeta = Render.setSearchMeta
+    local stroke = Render.stroke
+    local tween = Render.tween
+    local playInteractionSound = Render.playInteractionSound
+    local ripple = Render.ripple
+    local shiftZIndex = Render.shiftZIndex
 
-    local DiscordButton = {}
-    DiscordButton.__index = DiscordButton
+-- ============================================================
+-- DISCORD BUTTON
+-- ============================================================
 
-    local DISCORD_BLURPLE = Color3.fromRGB(88, 101, 242)
+function TM:CreateDiscordButton(config)
+    config = config or {}
+    local touch = self._touch
+    local compact = Library.Flags.CompactMode
+    local invite = config.Invite or "discord.gg/your-invite"
+    local screenGui = self._screenGui
 
-    function DiscordButton.New(section, props)
-        assert(props.Invite, "CreateDiscordButton: props.Invite is required")
+    local btn = create("TextButton", {
+        Text = "",
+        BackgroundColor3 = Theme.Element,
+        Size = UDim2.new(1, 0, 0, touch and (compact and 38 or 46) or (compact and 28 or 34)),
+        AutoButtonColor = false,
+    }, { corner(12), stroke() })
+    btn.Parent = self._page
+    setSearchMeta(btn, config, "Join Discord")
 
-        local self = setmetatable({}, DiscordButton)
+    create("TextLabel", {
+        Text = config.Name or "Join Discord",
+        Font = Enum.Font.GothamMedium,
+        TextSize = touch and (compact and 14 or 16) or (compact and 12 or 14),
+        TextColor3 = Theme.Text,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 1, 0),
+    }).Parent = btn
 
-        self.Frame = Render.New("Frame", {
-            Name = "DiscordButton",
-            Size = UDim2.new(1, 0, 0, 32),
-            CornerRadius = 6,
-            Color = DISCORD_BLURPLE,
-            Theme = false,
-            Parent = section.Frame,
+    btn.MouseButton1Click:Connect(function()
+        ripple(btn, Theme.Accent)
+        if not screenGui then return end
+
+        local backdrop = create("Frame", {
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundColor3 = Color3.new(0, 0, 0),
+            BackgroundTransparency = 1,
+            ZIndex = 200,
+            Active = true,
         })
+        backdrop.Parent = screenGui
+        tween(backdrop, { BackgroundTransparency = 0.5 }, 0.2)
 
-        local labelOffset = props.Icon and 36 or 8
+        local popup = create("Frame", {
+            Size = UDim2.new(0, touch and 280 or 260, 0, 100),
+            Position = UDim2.new(0.5, 0, 0.5, 0),
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            BackgroundColor3 = Theme.Header,
+            ZIndex = 201,
+        }, { corner(14), stroke(Theme.Accent, 1.5) })
+        popup.Parent = backdrop
 
-        if props.Icon then
-            Render.New("Icon", {
-                Image = props.Icon,
-                Size = UDim2.fromOffset(18, 18),
-                Position = UDim2.fromOffset(8, 7),
-                Color = Color3.new(1, 1, 1),
-                Theme = false,
-                Parent = self.Frame,
-            })
-        end
+        create("TextLabel", {
+            Text = "Long-press the box, select all, then copy",
+            Font = Enum.Font.Gotham,
+            TextSize = touch and 12 or 11,
+            TextColor3 = Theme.SubText,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, -24, 0, 16),
+            Position = UDim2.new(0.5, 0, 0, 12),
+            AnchorPoint = Vector2.new(0.5, 0),
+            ZIndex = 201,
+        }).Parent = popup
 
-        Render.New("Text", {
-            Text = props.Title or "Join our Discord",
+        create("TextBox", {
+            Text = invite,
+            Font = Enum.Font.GothamMedium,
+            TextSize = touch and 15 or 13,
+            TextColor3 = Theme.Text,
+            BackgroundColor3 = Theme.Element,
+            Size = UDim2.new(1, -24, 0, 38),
+            Position = UDim2.new(0.5, 0, 0, 36),
+            AnchorPoint = Vector2.new(0.5, 0),
+            ClearTextOnFocus = false,
+            ZIndex = 201,
+        }, { corner(8) }).Parent = popup
+
+        local closeBtn = create("TextButton", {
+            Text = "✕",
+            Font = Enum.Font.GothamBold,
             TextSize = 14,
-            Color = Color3.new(1, 1, 1),
-            XAlignment = Enum.TextXAlignment.Center,
-            Size = UDim2.new(1, -labelOffset - 8, 1, 0),
-            Position = UDim2.fromOffset(labelOffset, 0),
-            Theme = false,
-            Parent = self.Frame,
+            TextColor3 = Theme.SubText,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0, 26, 0, 26),
+            Position = UDim2.new(1, -30, 0, 4),
+            ZIndex = 201,
         })
+        closeBtn.Parent = popup
 
-        local button = Instance.new("TextButton")
-        button.BackgroundTransparency = 1
-        button.Text = ""
-        button.Size = UDim2.fromScale(1, 1)
-        button.ZIndex = self.Frame.ZIndex + 1
-        button.Parent = self.Frame
-
-        button.MouseButton1Click:Connect(function()
-            -- Shared clipboard helper (Host): capability-detects the
-            -- executor's copy global and degrades to a warn() when absent.
-            local Host = Modules.Host
-            if Host then
-                Host.SetClipboard(props.Invite)
-            end
-            if props.OnClick then
-                task.spawn(props.OnClick, props.Invite)
+        local function closePopup()
+            tween(backdrop, { BackgroundTransparency = 1 }, 0.15)
+            task.delay(0.15, function() backdrop:Destroy() end)
+        end
+        closeBtn.MouseButton1Click:Connect(closePopup)
+        backdrop.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                local mousePos = input.Position
+                local popupPos, popupSize = popup.AbsolutePosition, popup.AbsoluteSize
+                local insidePopup = mousePos.X >= popupPos.X and mousePos.X <= popupPos.X + popupSize.X
+                    and mousePos.Y >= popupPos.Y and mousePos.Y <= popupPos.Y + popupSize.Y
+                if not insidePopup then closePopup() end
             end
         end)
+    end)
 
-        return self
-    end
-
-    Section.CreateDiscordButton = function(section, props)
-        return DiscordButton.New(section, props)
-    end
-
-    return DiscordButton
+    return btn
+end
 end

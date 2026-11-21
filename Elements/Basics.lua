@@ -1,813 +1,874 @@
 --[[
-    CornUi v2.0 — Elements/Basics.lua
-    Groups the small, simple elements in one file: Divider, Label, Button,
-    Card, Paragraph, Image, ProgressBar, RadioGroup, Stepper, Cycle. Only
-    ProgressBar, RadioGroup, Stepper and Cycle are Flag-backed; the rest are
-    display/static.
+    CreateCustom / CreateSection / CreateLabel / CreateButton / CreateDivider / CreateCard / CreateParagraph / CreateImage / CreateProgressBar / CreateMeter / CreateTimer / CreateChecklist — verbatim v1.9.4d.
 
-    Registers:
-        Section:CreateDivider(props)
-        Section:CreateLabel(props)
-        Section:CreateButton(props)      -- Sub-UI spawner (SubWindow / Loadstring)
-        Section:CreateCard(props)
-        Section:CreateParagraph(props)
-        Section:CreateImage(props)
-        Section:CreateProgressBar(props)
-        Section:CreateRadioGroup(props)
-        Section:CreateStepper(props)     -- Flag number with −/+ taps
-        Section:CreateCycle(props)       -- Flag cycler with ‹ › taps
+    The Lua below is the v1.9.4d source, verbatim, split out of the original
+    monolith. Only the prelude (binding the monolith's file-local upvalues to
+    the module table) and the trailing module export are ours; the bodies are
+    byte-identical to upload/CornUi.lua lines 3067-3206, 4486-4523, 4525-4599, 4601-4663, 4665-4719, 4721-4803, 4805-4894, 4896-5047, 5049-5185. The window chrome,
+    intro, stacking and every element behave exactly as v1.9.4d shipped.
 ]]
 
+-- CornUi v1.9.4d (modular) — Elements/Basics.lua
 return function(Modules)
-
+    -- Verbatim-body prelude (the only non-v1.9.4d code in this file): binds
+    -- the monolith's file-local upvalues to the module system. The loader's
+    -- shared table IS the facade, so `Library.X` below reads exactly like
+    -- the v1.9.4d source; every extracted body is byte-identical to it.
+    local Library = Modules
     local Render = Modules.Render
-    local Theme = Modules.Theme
-    local Flags = Modules.Flags
-    local Section = Modules.Window.Section
+    local Theme = Modules.Theme.Theme
+    local TM = Modules.TabMethods
+    local UserInputService = Render.UserInputService
+    local TweenService = Render.TweenService
+    local RunService = Render.RunService
+    local create = Render.create
+    local corner = Render.corner
+    local setSearchMeta = Render.setSearchMeta
+    local stroke = Render.stroke
+    local tween = Render.tween
+    local playInteractionSound = Render.playInteractionSound
+    local ripple = Render.ripple
+    local shiftZIndex = Render.shiftZIndex
 
-    ------------------------------------------------------------
-    -- Divider — plain line, or an interrupted line with a centered label
-    ------------------------------------------------------------
+function TM:CreateCustom(name, config)
+    local constructor = Library._customElements[name]
+    if not constructor then
+        warn("[MobileUILib] Unknown custom element: " .. tostring(name))
+        return nil
+    end
+    return constructor(self, config)
+end
 
-    Section.CreateDivider = function(section, props)
-        props = props or {}
+-- ============================================================
+-- SECTION
+-- ============================================================
 
-        if not props.Title then
-            return Render.New("Frame", {
-                Name = "Divider",
-                Size = UDim2.new(1, 0, 0, 1),
-                Theme = "Default",
-                Transparency = props.Transparency or 0.5,
-                Parent = section.Frame,
-            })
-        end
+function TM:CreateSection(name)
+    local touch = self._touch
+    local compact = Library.Flags.CompactMode
 
-        -- Line with a centered chip interrupting it (v1-style labeled divider).
-        local row = Render.New("Frame", {
-            Name = "Divider_" .. props.Title,
-            Size = UDim2.new(1, 0, 0, 16),
+    local container = create("Frame", {
+        Size = UDim2.new(1, 0, 0, touch and 40 or 30),
+        BackgroundColor3 = Theme.Header,
+        AutomaticSize = Enum.AutomaticSize.Y,
+    }, { corner(12), stroke() })
+    container.Parent = self._page
+
+    -- Content lives in its own inner wrapper so `container` (the actual
+    -- textured/colored surface) has no UIListLayout as a DIRECT child —
+    -- WindowTexture skips any surface with one (see the note above
+    -- _applyTiledOverlay) to avoid corrupting real layouts, and a Section's
+    -- own UIListLayout for stacking its elements was getting caught by
+    -- that same guard, silently excluding almost every panel in the UI.
+    -- `container`'s AutomaticSize.Y still grows correctly to match this
+    -- inner Frame's own AutomaticSize.Y — Roblox measures a parent's
+    -- AutomaticSize from its children's resolved extents regardless of
+    -- how those children compute their own size.
+    local content = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 0),
+        BackgroundTransparency = 1,
+        AutomaticSize = Enum.AutomaticSize.Y,
+    }, {
+        create("UIListLayout", {
+            Padding = UDim.new(0, compact and 4 or 6),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+        }),
+        create("UIPadding", {
+            PaddingTop = UDim.new(0, compact and 4 or 8),
+            PaddingLeft = UDim.new(0, compact and 4 or 8),
+            PaddingRight = UDim.new(0, compact and 4 or 8),
+            PaddingBottom = UDim.new(0, compact and 4 or 8),
+        }),
+    })
+    content.Parent = container
+
+    create("TextLabel", {
+        Text = name,
+        Font = Enum.Font.GothamBold,
+        TextSize = touch and (compact and 12 or 14) or (compact and 10 or 12),
+        TextColor3 = Theme.SubText,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, touch and (compact and 16 or 20) or (compact and 12 or 16)),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        LayoutOrder = 0,
+    }).Parent = content
+
+    local Section = setmetatable({
+        _page = content,
+        _touch = touch,
+        _window = self._window,
+        _screenGui = self._screenGui,
+    }, { __index = Library.TabMethods })
+
+    return Library:_wrapElement(container, Section)
+end
+
+-- ============================================================
+-- LABEL
+-- ============================================================
+
+function TM:CreateLabel(text)
+    local touch = self._touch
+    local compact = Library.Flags.CompactMode
+    local label = create("TextLabel", {
+        Text = text,
+        Font = Enum.Font.Gotham,
+        TextSize = touch and (compact and 13 or 15) or (compact and 11 or 13),
+        TextColor3 = Theme.SubText,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, touch and (compact and 18 or 24) or (compact and 14 or 18)),
+        TextXAlignment = Enum.TextXAlignment.Left,
+    })
+    label.Parent = self._page
+    return label
+end
+
+-- ============================================================
+-- BUTTON
+-- ============================================================
+
+function TM:CreateButton(config)
+    config = config or {}
+    local touch = self._touch
+    local compact = Library.Flags.CompactMode
+    local callback = config.Callback or function() end
+    local soundId = config.Sound
+    local haptic = config.Haptic
+
+    local btn = create("TextButton", {
+        Text = "",
+        BackgroundColor3 = Theme.Element,
+        Size = UDim2.new(1, 0, 0, touch and (compact and 38 or 46) or (compact and 28 or 34)),
+        AutoButtonColor = false,
+    }, { corner(12), stroke() })
+    btn.Parent = self._page
+    setSearchMeta(btn, config, "Button")
+
+    local label = create("TextLabel", {
+        Text = config.Name or "Button",
+        Font = Enum.Font.GothamMedium,
+        TextSize = touch and (compact and 14 or 16) or (compact and 12 or 14),
+        TextColor3 = Theme.Text,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 1, 0),
+    })
+    label.Parent = btn
+
+    btn.MouseButton1Click:Connect(function()
+        ripple(btn, Theme.Accent)
+        tween(btn, { BackgroundColor3 = Theme.Accent }, 0.1)
+        task.delay(0.1, function()
+            tween(btn, { BackgroundColor3 = Theme.Element }, 0.1)
+        end)
+
+        if soundId then Library:PlaySound(soundId) end
+        if haptic then Library:PlayHaptic("short") end
+
+        local ok, err = pcall(callback)
+        if not ok then warn("[MobileUILib] Button callback error: " .. tostring(err)) end
+    end)
+
+    return Library:_wrapElement(btn)
+end
+
+-- ============================================================
+-- DIVIDER
+-- ============================================================
+
+function TM:CreateDivider(config)
+    config = config or {}
+    local touch = self._touch
+    local compact = Library.Flags.CompactMode
+
+    local holder = create("Frame", {
+        Size = UDim2.new(1, 0, 0, config.Name and (touch and (compact and 18 or 24) or (compact and 14 or 20)) or (touch and (compact and 6 or 10) or (compact and 4 or 8))),
+        BackgroundTransparency = 1,
+    })
+    holder.Parent = self._page
+    setSearchMeta(holder, config, "Divider")
+
+    if config.Name then
+        create("TextLabel", {
+            Text = config.Name,
+            Font = Enum.Font.GothamBold,
+            TextSize = touch and (compact and 10 or 12) or (compact and 8 or 10),
+            TextColor3 = Theme.SubText,
             BackgroundTransparency = 1,
-            Theme = false,
-            Parent = section.Frame,
-        })
-
-        Render.New("Frame", {
-            Name = "Line",
-            Size = UDim2.new(1, 0, 0, 1),
-            Position = UDim2.new(0, 0, 0.5, 0),
-            Theme = "Default",
-            Transparency = props.Transparency or 0.5,
-            Parent = row,
-        })
-
-        local chip = Render.New("Frame", {
-            Name = "Chip",
-            Size = UDim2.new(0, 0, 1, 0),
-            AutomaticSize = Enum.AutomaticSize.X,
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = UDim2.new(0.5, 0, 0.5, 0),
-            Theme = "Card",
-            Parent = row,
-        })
-
-        local chipPadding = Instance.new("UIPadding")
-        chipPadding.PaddingLeft = UDim.new(0, 8)
-        chipPadding.PaddingRight = UDim.new(0, 8)
-        chipPadding.Parent = chip
-
-        Render.New("Text", {
-            Text = props.Title,
-            TextSize = 12,
-            Size = UDim2.new(0, 0, 1, 0),
-            AutomaticSize = Enum.AutomaticSize.X,
-            Theme = "Muted",
-            Parent = chip,
-        })
-
-        return row
+            Size = UDim2.new(1, 0, 0, touch and (compact and 12 or 16) or (compact and 10 or 14)),
+            TextXAlignment = Enum.TextXAlignment.Left,
+        }).Parent = holder
     end
 
-    ------------------------------------------------------------
-    -- Label — single line of themed text (v1 CreateLabel parity)
-    ------------------------------------------------------------
+    local line = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 1),
+        Position = UDim2.new(0, 0, 1, -1),
+        BackgroundColor3 = Theme.Stroke,
+        BorderSizePixel = 0,
+    })
+    line.Parent = holder
 
-    Section.CreateLabel = function(section, props)
-        props = props or {}
-        return Render.New("Text", {
-            Name = "Label_" .. (props.Title or "Label"),
-            Text = props.Title or "",
-            TextSize = props.TextSize or 14,
-            TextWrapped = props.TextWrapped == true,
-            XAlignment = props.XAlignment or Enum.TextXAlignment.Left,
-            Size = props.Size or UDim2.new(1, 0, 0, 18),
-            Theme = props.Muted and "Muted" or "Default",
-            Parent = section.Frame,
-        })
+    return holder
+end
+
+-- ============================================================
+-- CARD
+-- ============================================================
+
+function TM:CreateCard(config)
+    config = config or {}
+    local touch = self._touch
+    local compact = Library.Flags.CompactMode
+
+    local card = create("Frame", {
+        Size = UDim2.new(1, 0, 0, touch and (compact and 32 or 40) or (compact and 24 or 30)),
+        BackgroundColor3 = Theme.Element,
+        AutomaticSize = Enum.AutomaticSize.Y,
+    }, { corner(14), stroke() })
+    card.Parent = self._page
+    setSearchMeta(card, config, "Card")
+
+    -- Same reasoning as CreateSection: content lives in its own inner
+    -- wrapper so `card` (the textured/colored surface) has no UIListLayout
+    -- as a direct child, keeping it eligible for WindowTexture.
+    local content = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 0),
+        BackgroundTransparency = 1,
+        AutomaticSize = Enum.AutomaticSize.Y,
+    }, {
+        create("UIListLayout", {
+            Padding = UDim.new(0, compact and 4 or 6),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+        }),
+        create("UIPadding", {
+            PaddingTop = UDim.new(0, compact and 6 or 10),
+            PaddingLeft = UDim.new(0, compact and 6 or 10),
+            PaddingRight = UDim.new(0, compact and 6 or 10),
+            PaddingBottom = UDim.new(0, compact and 6 or 10),
+        }),
+    })
+    content.Parent = card
+
+    if config.Title then
+        create("TextLabel", {
+            Text = config.Title,
+            Font = Enum.Font.GothamBold,
+            TextSize = touch and (compact and 14 or 16) or (compact and 12 or 14),
+            TextColor3 = Theme.Text,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, touch and (compact and 18 or 22) or (compact and 14 or 18)),
+            TextXAlignment = Enum.TextXAlignment.Left,
+            LayoutOrder = 0,
+        }).Parent = content
     end
 
-    ------------------------------------------------------------
-    -- Button — themed click target (Render "Button" kind), with an instant
-    -- press-duck (two property writes, no tween) so touch users get feedback
-    -- even on Low quality.
-    --
-    -- Sub-UIs: a button can spawn its own window (multi-window CornUi).
-    --   SubWindow = {
-    --       Title, Size, Position, Name,      -- window props (Size default 360x260)
-    --       TabTitle, SectionTitle,           -- auto first tab/section ("Main")
-    --       Intro,                            -- default false (subs skip the intro)
-    --       Singleton = true,                 -- re-click refocuses the live window
-    --       Build = function(sub, section) end, -- populate the sub-UI
-    --   }
-    --   Loadstring = "https://..." | "code" | function() -> code
-    --       -- an http-prefixed string is HttpGet'd first, anything else is
-    --       -- compiled as source directly
-    --   Command = false                       -- opt out of the Cornelius entry
-    -- The triggers compose: SubWindow, then Loadstring, then Callback.
-    ------------------------------------------------------------
-
-    local ButtonSeq = 0
-
-    -- One shared failure surface for loadstring problems: a toast when this
-    -- window has a notification center, a warn() always.
-    local function notifyError(section, text, detail)
-        warn("[CornUi] " .. text .. (detail and (": " .. tostring(detail)) or ""))
-        local win = section.Window
-        if win and win.NotifHolder and win.Notify then
-            pcall(win.Notify, win, { Title = "CornUi", Text = text, Duration = 4 })
-        end
-    end
-
-    -- Spawns (or refocuses) the button's sub-window. The live sub-window is
-    -- remembered on the button's own props, so each button singletons its
-    -- own window independently of every other button.
-    local function openSubWindow(section, props)
-        local subProps = props.SubWindow
-
-        -- Singleton by default: a second click raises the live window
-        -- instead of stacking clones.
-        if subProps.Singleton ~= false and props._subWindow
-            and props._subWindow.ScreenGui.Parent ~= nil then
-            local sub = props._subWindow
-            sub:SetMinimized(false)
-            sub:SetVisible(true)
-            sub:Focus()
-            return sub
-        end
-
-        local sub = Modules.Window.New({
-            Title = subProps.Title or "Sub window",
-            Size = subProps.Size or UDim2.fromOffset(360, 260),
-            Position = subProps.Position,
-            Name = subProps.Name,
-            Intro = subProps.Intro == true, -- subs skip the intro by default
-        })
-        props._subWindow = sub
-
-        if subProps.Build ~= false then
-            local tab = sub:AddTab(subProps.TabTitle or "Main")
-            local firstSection = tab:AddSection(subProps.SectionTitle or subProps.TabTitle or "Main")
-            if subProps.Build then
-                subProps.Build(sub, firstSection)
-            end
-        end
-
-        return sub
-    end
-
-    -- Runs the button's Loadstring payload: fetch (URL) -> compile -> run,
-    -- every stage guarded, failures surfaced via notifyError.
-    local function runLoadstring(section, payload)
-        task.spawn(function()
-            local source = payload
-            if type(source) == "function" then
-                local ok, result = pcall(source)
-                if not ok then
-                    notifyError(section, "Loadstring source function failed", result)
-                    return
-                end
-                source = result
-            end
-            if type(source) ~= "string" or #source == 0 then
-                notifyError(section, "Loadstring: expected source code, URL or function")
-                return
-            end
-
-            if source:sub(1, 4):lower() == "http" then
-                local ok, body = pcall(game.HttpGet, game, source)
-                if not ok or type(body) ~= "string" then
-                    notifyError(section, "Couldn't fetch loadstring URL", body)
-                    return
-                end
-                source = body
-            end
-
-            local chunk, compileErr = loadstring(source)
-            if not chunk then
-                notifyError(section, "Loadstring compile error", compileErr)
-                return
-            end
-
-            local ok, runErr = pcall(chunk)
-            if not ok then
-                notifyError(section, "Loadstring runtime error", runErr)
-            end
-        end)
-    end
-
-    Section.CreateButton = function(section, props)
-        props = props or {}
-
-        local btn = Render.New("Button", {
-            Name = "Button_" .. (props.Title or "Button"),
-            Text = props.Title or "Button",
-            TextSize = props.TextSize or 14,
-            Size = props.Size or UDim2.new(1, 0, 0, 30),
-            Theme = props.Accent and "Enabled" or "Default",
-            Parent = section.Frame,
-        })
-
-        -- Optional icon: rbxassetid number, URL, local file or embedded pack
-        -- name (Systems/Assets.lua); Render's Icon builder resolves it.
-        if props.Icon then
-            Render.New("Icon", {
-                Name = "ButtonIcon",
-                Image = props.Icon,
-                Size = UDim2.fromOffset(16, 16),
-                Position = UDim2.new(0, 8, 0.5, -8),
-                Theme = false,
-                Parent = btn,
-            })
-            btn.TextXAlignment = Enum.TextXAlignment.Left
-            local pad = Instance.new("UIPadding")
-            pad.PaddingLeft = UDim.new(0, 30)
-            pad.Parent = btn
-        end
-
-        btn.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-                or input.UserInputType == Enum.UserInputType.Touch then
-                btn.BackgroundTransparency = 0.25
-            end
-        end)
-
-        btn.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-                or input.UserInputType == Enum.UserInputType.Touch then
-                btn.BackgroundTransparency = 0
-            end
-        end)
-
-        local function activate()
-            if props.SubWindow then
-                openSubWindow(section, props)
-            end
-            if props.Loadstring then
-                runLoadstring(section, props.Loadstring)
-            end
-            if props.Callback then
-                props.Callback()
-            end
-        end
-
-        btn.MouseButton1Click:Connect(function()
-            task.spawn(activate)
-        end)
-
-        -- Cornelius: the button's action is runnable from the palette.
-        -- Opt out per-button with Command = false.
-        if Modules.Commands and props.Command ~= false then
-            ButtonSeq += 1
-            Modules.Commands.Register({
-                Id = ("CornUi.W%s.Button.%d"):format(
-                    tostring(section.Window and section.Window.Id or 0),
-                    ButtonSeq
-                ),
-                Title = props.Title or "Button",
-                Keywords = "button " .. tostring(props.Title or ""),
-                Owner = section.Window,
-                Run = activate,
-            })
-        end
-
-        return btn
-    end
-
-    ------------------------------------------------------------
-    -- Card — a themed sub-container other content can be parented into
-    ------------------------------------------------------------
-
-    local Card = {}
-    Card.__index = Card
-
-    Section.CreateCard = function(section, props)
-        props = props or {}
-
-        local self = setmetatable({}, Card)
-
-        self.Frame = Render.New("Frame", {
-            Name = "Card_" .. (props.Title or "Card"),
-            Size = UDim2.new(1, 0, 0, 26), -- stacked by the shell engine as rows land
-            CornerRadius = 6,
-            Theme = "Card",
-            Parent = section.Frame,
-        })
-
-        -- Same explicit-Y engine as sections/pages: rows are placed by
-        -- arithmetic and the card grows through its Size signal, which the
-        -- parent section's stack picks up automatically.
-        Modules.Window.Stack.Attach(self.Frame, {
-            Top = 8,
-            Gap = 4,
-            Bottom = 8,
-            RowFallback = 22,
-        })
-
-        if props.Title then
-            Render.New("Text", {
-                Name = "CardTitle",
-                Text = props.Title,
-                TextSize = 13,
-                Font = Enum.Font.GothamMedium,
-                Size = UDim2.new(1, -16, 0, 16),
-                Theme = "Default",
-                Parent = self.Frame,
-            })
-        end
-
-        function self:Add(inst)
-            inst.Parent = self.Frame
-            return inst
-        end
-
-        return self
-    end
-
-    ------------------------------------------------------------
-    -- Paragraph — auto-grows with wrapped text (fixed Height still honored)
-    ------------------------------------------------------------
-
-    Section.CreateParagraph = function(section, props)
-        props = props or {}
-        return Render.New("Text", {
-            Name = "Paragraph",
-            Text = props.Text or "",
-            TextSize = props.TextSize or 13,
-            TextWrapped = true,
-            XAlignment = Enum.TextXAlignment.Left,
-            YAlignment = Enum.TextYAlignment.Top,
-            -- Explicit height estimate (13px text ~ 52 chars/line): the
-            -- shell stacks by arithmetic, so paragraphs book real pixels
-            -- up front instead of relying on AutomaticSize.
-            Size = props.Height and UDim2.new(1, 0, 0, props.Height)
-                or UDim2.new(1, 0, 0, math.max(1, math.ceil(#tostring(props.Text or "") / 52)) * 16 + 4),
-            Theme = props.Muted and "Muted" or "Default",
-            Parent = section.Frame,
-        })
-    end
-
-    ------------------------------------------------------------
-    -- Image
-    ------------------------------------------------------------
-
-    Section.CreateImage = function(section, props)
-        props = props or {}
-        assert(props.Image, "CreateImage: props.Image is required")
-
-        return Render.New("Icon", {
-            Name = "Image",
-            Image = props.Image,
-            Size = props.Size or UDim2.fromOffset(64, 64),
-            ScaleType = props.ScaleType,
-            Theme = false,
-            Parent = section.Frame,
-        })
-    end
-
-    ------------------------------------------------------------
-    -- ProgressBar
-    ------------------------------------------------------------
-
-    local ProgressBar = {}
-    ProgressBar.__index = ProgressBar
-
-    Section.CreateProgressBar = function(section, props)
-        props = props or {}
-        local min = props.Min or 0
-        local max = props.Max or 100
-
-        local self = setmetatable({}, ProgressBar)
-
-        local row = Render.New("Frame", {
-            Name = "ProgressBar_" .. (props.Title or "Progress"),
-            Size = UDim2.new(1, 0, 0, props.Title and 36 or 14),
-            Theme = false,
-            Parent = section.Frame,
-        })
-        row.BackgroundTransparency = 1
-
-        if props.Title then
-            Render.New("Text", {
-                Text = props.Title,
-                TextSize = 13,
-                Size = UDim2.new(1, 0, 0, 16),
-                Theme = "Default",
-                Parent = row,
-            })
-        end
-
-        self.Track = Render.New("Frame", {
-            Name = "Track",
-            Size = UDim2.new(1, 0, 0, 10),
-            Position = UDim2.fromOffset(0, props.Title and 20 or 0),
-            CornerRadius = 5,
-            Theme = "Default",
-            Parent = row,
-        })
-
-        self.Fill = Render.New("Frame", {
-            Name = "Fill",
-            Size = UDim2.new(0, 0, 1, 0),
-            CornerRadius = 5,
-            Theme = "Enabled",
-            Parent = self.Track,
-        })
-
-        function self:Set(value)
-            local range = max - min
-            local alpha = (range ~= 0) and math.clamp((value - min) / range, 0, 1) or 1
-            self.Fill.Size = UDim2.new(alpha, 0, 1, 0)
-        end
-
-        if props.Flag then
-            Flags.RegisterElement(props.Flag, { Set = function(value) self:Set(value) end })
-            self:Set(Flags.GetFlag(props.Flag, min))
-        else
-            self:Set(props.Default or min)
-        end
-
-        return self
-    end
-
-    ------------------------------------------------------------
-    -- RadioGroup — single-select from a fixed option list, Flag-backed
-    ------------------------------------------------------------
-
-    local RadioGroup = {}
-    RadioGroup.__index = RadioGroup
-
-    Section.CreateRadioGroup = function(section, props)
-        props = props or {}
-        props.Flag = props.Flag or Flags.NextAutoFlag()
-        assert(type(props.Options) == "table" and #props.Options > 0,
-            "CreateRadioGroup: props.Options must be a non-empty array")
-
-        local self = setmetatable({}, RadioGroup)
-        self.Flag = props.Flag
-
-        local container = Render.New("Frame", {
-            Name = "RadioGroup_" .. props.Flag,
+    if config.Subtitle then
+        create("TextLabel", {
+            Text = config.Subtitle,
+            Font = Enum.Font.Gotham,
+            TextSize = touch and (compact and 11 or 13) or (compact and 9 or 11),
+            TextColor3 = Theme.SubText,
+            BackgroundTransparency = 1,
             Size = UDim2.new(1, 0, 0, 0),
             AutomaticSize = Enum.AutomaticSize.Y,
-            Theme = false,
-            Parent = section.Frame,
-        })
-        container.BackgroundTransparency = 1
-
-        if props.Title then
-            Render.New("Text", {
-                Text = props.Title,
-                TextSize = 14,
-                Size = UDim2.new(1, 0, 0, 18),
-                Theme = "Default",
-                Parent = container,
-            })
-        end
-
-        local dots = {}
-        local function isSelected(option, currentValue)
-            return currentValue == option
-        end
-
-        local function refresh(currentValue)
-            for option, dot in pairs(dots) do
-                dot.BackgroundTransparency = isSelected(option, currentValue) and 0 or 1
-            end
-        end
-
-        for i, option in ipairs(props.Options) do
-            local row = Render.New("Frame", {
-                Name = "Radio_" .. tostring(option),
-                Size = UDim2.new(1, 0, 0, 22),
-                LayoutOrder = i,
-                Theme = false,
-                Parent = container,
-            })
-            row.BackgroundTransparency = 1
-
-            -- Ring: a themed circle outline; the inner dot fills when selected.
-            local ring = Render.New("Frame", {
-                Name = "Ring",
-                Size = UDim2.fromOffset(14, 14),
-                Position = UDim2.new(0, 0, 0.5, -7),
-                CornerRadius = 7,
-                Theme = "Muted",
-                Transparency = 0.6,
-                Parent = row,
-            })
-
-            local dot = Render.New("Frame", {
-                Name = "Dot",
-                Size = UDim2.new(1, -6, 1, -6),
-                Position = UDim2.fromOffset(3, 3),
-                CornerRadius = 4,
-                Theme = "Enabled",
-                Parent = ring,
-            })
-            dots[option] = dot
-
-            Render.New("Text", {
-                Text = tostring(option),
-                TextSize = 13,
-                Size = UDim2.new(1, -22, 1, 0),
-                Position = UDim2.fromOffset(22, 0),
-                Theme = "Default",
-                Parent = row,
-            })
-
-            local optButton = Instance.new("TextButton")
-            optButton.BackgroundTransparency = 1
-            optButton.Text = ""
-            optButton.Size = UDim2.fromScale(1, 1)
-            optButton.ZIndex = row.ZIndex + 1
-            optButton.Parent = row
-            optButton.MouseButton1Click:Connect(function()
-                Flags.SetFlag(props.Flag, option)
-            end)
-        end
-
-        function self.Set(a, b)
-            -- accepts both .Set(value) (Flags sync) and :Set(value) (user calls)
-            local value = b
-            if a ~= self then
-                value = a
-            end
-            if props.Flag then
-                Flags.SetFlag(props.Flag, value, true) -- silent: programmatic Set also persists
-            end
-            refresh(value)
-            if props.Callback then
-                task.spawn(props.Callback, value)
-            end
-        end
-
-        local initial = Flags.GetFlag(props.Flag, props.Default or props.Options[1])
-        Flags.RegisterElement(props.Flag, self)
-        Flags.SetFlag(props.Flag, initial, true)
-        refresh(initial)
-
-        return self
+            TextWrapped = true,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            LayoutOrder = 1,
+        }).Parent = content
     end
 
-    ------------------------------------------------------------
-    -- Stepper — Flag-backed number field with − / + tap buttons: the
-    -- mobile alternative to a drag slider when values move in fixed steps.
-    --   { Flag, Title, Min, Max, Step, Default, Suffix, Callback }
-    ------------------------------------------------------------
+    local Card = setmetatable({
+        _page = content,
+        _touch = touch,
+        _window = self._window,
+        _screenGui = self._screenGui,
+    }, { __index = Library.TabMethods })
 
-    local Stepper = {}
-    Stepper.__index = Stepper
+    return Card
+end
 
-    Section.CreateStepper = function(section, props)
-        props = props or {}
-        props.Flag = props.Flag or Flags.NextAutoFlag()
+-- ============================================================
+-- PARAGRAPH
+-- ============================================================
 
-        local min = props.Min or 0
-        local max = props.Max or 100
-        local step = props.Step or 1
-        local suffix = props.Suffix and (" " .. props.Suffix) or ""
+function TM:CreateParagraph(config)
+    config = config or {}
+    local touch = self._touch
+    local compact = Library.Flags.CompactMode
 
-        local self = setmetatable({}, Stepper)
-        self.Flag = props.Flag
+    local holder = create("Frame", {
+        Size = UDim2.new(1, 0, 0, touch and (compact and 32 or 40) or (compact and 24 or 30)),
+        BackgroundColor3 = Theme.Element,
+        AutomaticSize = Enum.AutomaticSize.Y,
+    }, {
+        corner(12),
+        stroke(),
+        create("UIListLayout", {
+            Padding = UDim.new(0, compact and 2 or 4),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+        }),
+        create("UIPadding", {
+            PaddingTop = UDim.new(0, compact and 6 or 10),
+            PaddingLeft = UDim.new(0, compact and 8 or 12),
+            PaddingRight = UDim.new(0, compact and 8 or 12),
+            PaddingBottom = UDim.new(0, compact and 6 or 10),
+        }),
+    })
+    holder.Parent = self._page
+    setSearchMeta(holder, config, "Paragraph")
 
-        local row = Render.New("Frame", {
-            Name = "Stepper_" .. props.Flag,
-            Size = UDim2.new(1, 0, 0, Theme.Tokens.RowHeight),
-            Theme = false,
-            Parent = section.Frame,
-        })
-        row.BackgroundTransparency = 1
-
-        Render.New("Text", {
-            Text = props.Title or props.Flag,
-            TextSize = 14,
-            Size = UDim2.new(1, -160, 0, 18),
-            Theme = "Default",
-            Parent = row,
-        })
-
-        -- Right cluster: −  [value]  +  (26px buttons, 72px readout — all
-        -- thumb-sized, no drag precision needed).
-        self.Value = Render.New("Text", {
-            Name = "Value",
-            Text = "",
-            TextSize = 13,
-            XAlignment = Enum.TextXAlignment.Center,
-            Size = UDim2.fromOffset(72, 20),
-            Position = UDim2.new(1, -102, 0.5, -10),
-            Theme = "Default",
-            Parent = row,
-        })
-
-        local minusBtn = Render.New("Button", {
-            Name = "Minus",
-            Text = "–",
-            TextSize = 14,
-            Size = UDim2.fromOffset(26, 26),
-            Position = UDim2.new(1, -132, 0.5, -13),
-            CornerRadius = 7,
-            Theme = "Card",
-            Parent = row,
-        })
-
-        local plusBtn = Render.New("Button", {
-            Name = "Plus",
-            Text = "+",
-            TextSize = 14,
-            Size = UDim2.fromOffset(26, 26),
-            Position = UDim2.new(1, -26, 0.5, -13),
-            CornerRadius = 7,
-            Theme = "Card",
-            Parent = row,
-        })
-
-        local function clamp(v)
-            if v < min then return min end
-            if v > max then return max end
-            return v
-        end
-
-        -- Snaps to the step grid so Step = 0.1 doesn't accumulate float
-        -- drift (0.30000000000004 shows up as "0.3").
-        local function snapped(v)
-            if step > 0 then
-                v = math.round(v / step) * step
-            end
-            return clamp(v)
-        end
-
-        function self.Set(a, b)
-            -- accepts both .Set(value) (Flags sync) and :Set(value) (user calls)
-            local value = b
-            if a ~= self then
-                value = a
-            end
-            if props.Flag then
-                Flags.SetFlag(props.Flag, value, true) -- silent: programmatic Set also persists
-            end
-            value = clamp(tonumber(value) or min)
-            self.Value.Text = tostring(value) .. suffix
-            if props.Callback then
-                task.spawn(props.Callback, value)
-            end
-        end
-
-        Flags.RegisterElement(props.Flag, self)
-        local initial = snapped(Flags.GetFlag(props.Flag, props.Default or min))
-        Flags.SetFlag(props.Flag, initial, true)
-        self.Value.Text = tostring(initial) .. suffix -- silent initial paint
-
-        minusBtn.MouseButton1Click:Connect(function()
-            Flags.SetFlag(props.Flag, snapped(Flags.GetFlag(props.Flag, min) - step))
-        end)
-        plusBtn.MouseButton1Click:Connect(function()
-            Flags.SetFlag(props.Flag, snapped(Flags.GetFlag(props.Flag, min) + step))
-        end)
-
-        return self
+    if config.Title then
+        create("TextLabel", {
+            Text = config.Title,
+            Font = Enum.Font.GothamBold,
+            TextSize = touch and (compact and 13 or 15) or (compact and 11 or 13),
+            TextColor3 = Theme.Text,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, touch and (compact and 16 or 20) or (compact and 12 or 16)),
+            TextXAlignment = Enum.TextXAlignment.Left,
+            LayoutOrder = 0,
+        }).Parent = holder
     end
 
-    ------------------------------------------------------------
-    -- Cycle — Flag-backed value cycler with ‹ › tap buttons: the compact
-    -- dropdown alternative for short fixed option lists.
-    --   { Flag, Title, Options = {...}, Default, Loop = true, Callback }
-    ------------------------------------------------------------
+    local body = create("TextLabel", {
+        Text = config.Text or config.Content or "",
+        Font = Enum.Font.Gotham,
+        TextSize = touch and (compact and 12 or 14) or (compact and 10 or 12),
+        TextColor3 = Theme.SubText,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        TextWrapped = true,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+        LayoutOrder = 1,
+    })
+    body.Parent = holder
 
-    local Cycle = {}
-    Cycle.__index = Cycle
+    return {
+        Set = function(_, text) body.Text = text end,
+        Get = function() return body.Text end,
+    }
+end
 
-    Section.CreateCycle = function(section, props)
-        props = props or {}
-        props.Flag = props.Flag or Flags.NextAutoFlag()
-        assert(type(props.Options) == "table" and #props.Options > 0,
-            "CreateCycle: props.Options must be a non-empty array")
+-- ============================================================
+-- IMAGE
+-- ============================================================
 
-        local self = setmetatable({}, Cycle)
-        self.Flag = props.Flag
+function TM:CreateImage(config)
+    config = config or {}
+    local touch = self._touch
+    local compact = Library.Flags.CompactMode
 
-        local row = Render.New("Frame", {
-            Name = "Cycle_" .. props.Flag,
-            Size = UDim2.new(1, 0, 0, Theme.Tokens.RowHeight),
-            Theme = false,
-            Parent = section.Frame,
+    local function normalizeAsset(id)
+        if type(id) == "number" then return "rbxassetid://" .. tostring(id) end
+        if type(id) == "string" and id ~= "" and not id:match("^rbxassetid://") and not id:match("^https?://") then
+            return "rbxassetid://" .. id
+        end
+        return id
+    end
+
+    local holder = create("Frame", {
+        Size = UDim2.new(1, 0, 0, config.Height or (touch and (compact and 120 or 160) or (compact and 100 or 140))),
+        BackgroundColor3 = Theme.Element,
+        ClipsDescendants = true,
+    }, { corner(12), stroke() })
+    holder.Parent = self._page
+    setSearchMeta(holder, config, "Image")
+
+    local img = create("ImageLabel", {
+        Image = normalizeAsset(config.Image or config.AssetId or config.Id) or "",
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 1, 0),
+        ScaleType = config.ScaleType or Enum.ScaleType.Crop,
+    })
+    img.Parent = holder
+    img:SetAttribute("MUI_NoTheme", true)
+
+    if config.Name then
+        create("TextLabel", {
+            Text = config.Name,
+            Font = Enum.Font.GothamMedium,
+            TextSize = touch and (compact and 11 or 13) or (compact and 9 or 11),
+            TextColor3 = Color3.fromRGB(255, 255, 255),
+            BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+            BackgroundTransparency = 0.35,
+            Size = UDim2.new(1, 0, 0, touch and (compact and 20 or 26) or (compact and 16 or 22)),
+            Position = UDim2.new(0, 0, 1, touch and (compact and -20 or -26) or (compact and -16 or -22)),
+            TextXAlignment = Enum.TextXAlignment.Left,
+        }, {
+            create("UIPadding", { PaddingLeft = UDim.new(0, 8) }),
+        }).Parent = holder
+    end
+
+    return {
+        Set = function(_, newAsset) img.Image = normalizeAsset(newAsset) or "" end,
+        Get = function() return img.Image end,
+    }
+end
+
+-- ============================================================
+-- PROGRESS BAR
+-- ============================================================
+
+function TM:CreateProgressBar(config)
+    config = config or {}
+    local touch = self._touch
+    local compact = Library.Flags.CompactMode
+    local min = config.Min or 0
+    local max = config.Max or 100
+    local value = math.clamp(config.Default or min, min, max)
+
+    local holder = create("Frame", {
+        Size = UDim2.new(1, 0, 0, touch and (compact and 38 or 48) or (compact and 30 or 38)),
+        BackgroundColor3 = Theme.Element,
+    }, { corner(12), stroke() })
+    holder.Parent = self._page
+    setSearchMeta(holder, config, "Progress Bar")
+
+    create("TextLabel", {
+        Text = config.Name or "Progress",
+        Font = Enum.Font.GothamMedium,
+        TextSize = touch and (compact and 12 or 14) or (compact and 10 or 12),
+        TextColor3 = Theme.Text,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.6, 0, 0, touch and (compact and 14 or 18) or (compact and 10 or 14)),
+        Position = UDim2.new(0, 10, 0, compact and 2 or 6),
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }).Parent = holder
+
+    local percentLabel = create("TextLabel", {
+        Text = "",
+        Font = Enum.Font.GothamBold,
+        TextSize = touch and (compact and 11 or 13) or (compact and 9 or 11),
+        TextColor3 = Theme.SubText,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.35, -10, 0, touch and (compact and 14 or 18) or (compact and 10 or 14)),
+        Position = UDim2.new(0.65, 0, 0, compact and 2 or 6),
+        TextXAlignment = Enum.TextXAlignment.Right,
+    })
+    percentLabel.Parent = holder
+
+    local track = create("Frame", {
+        Size = UDim2.new(1, -20, 0, touch and (compact and 6 or 10) or (compact and 4 or 8)),
+        Position = UDim2.new(0, 10, 1, touch and (compact and -12 or -16) or (compact and -10 or -14)),
+        BackgroundColor3 = Color3.fromRGB(55, 55, 62),
+    }, { corner(8) })
+    track.Parent = holder
+
+    local fill = create("Frame", {
+        Size = UDim2.new(0, 0, 1, 0),
+        BackgroundColor3 = Theme.Accent,
+    }, { corner(8) })
+    fill.Parent = track
+    fill:SetAttribute("MUI_AccentSurface", true) -- eligible for a Skin's AccentTexture; always accent-colored
+    Library:_applyAccentOverlay(fill, true)
+
+    local function render(v, animate)
+        v = math.clamp(v, min, max)
+        local relative = (max > min) and ((v - min) / (max - min)) or 0
+        percentLabel.Text = math.floor(relative * 100 + 0.5) .. "%"
+        if animate then
+            tween(fill, { Size = UDim2.new(relative, 0, 1, 0) }, 0.25)
+        else
+            fill.Size = UDim2.new(relative, 0, 1, 0)
+        end
+        return v
+    end
+    value = render(value, false)
+
+    local handle = {
+        Set = function(_, v)
+            value = render(v, true)
+            if config.Flag then Library:SetFlag(config.Flag, value) end
+        end,
+        Get = function() return value end,
+    }
+    if config.Flag then
+        Library:SetFlag(config.Flag, value)
+        Library.FlagElements[config.Flag] = handle
+    end
+    return handle
+end
+
+-- ============================================================
+-- METER
+-- ============================================================
+
+function TM:CreateMeter(config)
+    config = config or {}
+    local touch = self._touch
+    local compact = Library.Flags.CompactMode
+    local min = config.Min or 0
+    local max = config.Max or 100
+    local value = math.clamp(config.Default or min, min, max)
+    local color = config.Color or Theme.Accent
+    local animated = config.Animated ~= false
+
+    local holder = create("Frame", {
+        Size = UDim2.new(1, 0, 0, touch and (compact and 38 or 48) or (compact and 30 or 38)),
+        BackgroundColor3 = Theme.Element,
+    }, { corner(12), stroke() })
+    holder.Parent = self._page
+    setSearchMeta(holder, config, "Meter")
+
+    create("TextLabel", {
+        Text = config.Name or "Meter",
+        Font = Enum.Font.GothamMedium,
+        TextSize = touch and (compact and 12 or 14) or (compact and 10 or 12),
+        TextColor3 = Theme.Text,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.6, 0, 0, touch and (compact and 14 or 18) or (compact and 10 or 14)),
+        Position = UDim2.new(0, 10, 0, compact and 2 or 6),
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }).Parent = holder
+
+    local valueLabel = create("TextLabel", {
+        Text = tostring(value),
+        Font = Enum.Font.GothamBold,
+        TextSize = touch and (compact and 11 or 13) or (compact and 9 or 11),
+        TextColor3 = Theme.SubText,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.35, -10, 0, touch and (compact and 14 or 18) or (compact and 10 or 14)),
+        Position = UDim2.new(0.65, 0, 0, compact and 2 or 6),
+        TextXAlignment = Enum.TextXAlignment.Right,
+    })
+    valueLabel.Parent = holder
+
+    local track = create("Frame", {
+        Size = UDim2.new(1, -20, 0, touch and (compact and 6 or 10) or (compact and 4 or 8)),
+        Position = UDim2.new(0, 10, 1, touch and (compact and -12 or -16) or (compact and -10 or -14)),
+        BackgroundColor3 = Color3.fromRGB(55, 55, 62),
+    }, { corner(8) })
+    track.Parent = holder
+
+    local fill = create("Frame", {
+        Size = UDim2.new(0, 0, 1, 0),
+        BackgroundColor3 = color,
+    }, { corner(8) })
+    fill.Parent = track
+    fill:SetAttribute("MUI_AccentSurface", true) -- eligible for a Skin's AccentTexture whenever its color happens to equal Theme.Accent
+    Library:_applyAccentOverlay(fill, color == Theme.Accent)
+
+    local function render(v)
+        v = math.clamp(v, min, max)
+        local relative = (max > min) and ((v - min) / (max - min)) or 0
+        valueLabel.Text = tostring(v)
+        if animated then
+            tween(fill, { Size = UDim2.new(relative, 0, 1, 0) }, 0.3)
+        else
+            fill.Size = UDim2.new(relative, 0, 1, 0)
+        end
+        return v
+    end
+    value = render(value)
+
+    local handle = {
+        Set = function(_, v)
+            value = render(v)
+            if config.Flag then Library:SetFlag(config.Flag, value) end
+        end,
+        Get = function() return value end,
+        SetColor = function(_, newColor)
+            color = newColor
+            fill.BackgroundColor3 = color
+            Library:_applyAccentOverlay(fill, color == Theme.Accent)
+        end,
+    }
+    if config.Flag then
+        Library:SetFlag(config.Flag, value)
+        Library.FlagElements[config.Flag] = handle
+    end
+    return handle
+end
+
+-- ============================================================
+-- TIMER
+-- ============================================================
+
+function TM:CreateTimer(config)
+    config = config or {}
+    local touch = self._touch
+    local compact = Library.Flags.CompactMode
+    local duration = config.Duration or 60
+    local remaining = duration
+    local running = false
+    local paused = false
+
+    local holder = create("Frame", {
+        Size = UDim2.new(1, 0, 0, touch and (compact and 60 or 80) or (compact and 44 or 60)),
+        BackgroundColor3 = Theme.Element,
+        AutomaticSize = Enum.AutomaticSize.Y,
+    }, { corner(12), stroke() })
+    holder.Parent = self._page
+    setSearchMeta(holder, config, "Timer")
+
+    local timeDisplay = create("TextLabel", {
+        Text = string.format("%02d:%02d", remaining // 60, remaining % 60),
+        Font = Enum.Font.GothamBold,
+        TextSize = touch and (compact and 26 or 32) or (compact and 20 or 26),
+        TextColor3 = Theme.Text,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, touch and (compact and 28 or 36) or (compact and 20 or 28)),
+        TextXAlignment = Enum.TextXAlignment.Center,
+    })
+    timeDisplay.Parent = holder
+
+    local btnRow = create("Frame", {
+        Size = UDim2.new(1, 0, 0, touch and (compact and 28 or 34) or (compact and 20 or 26)),
+        Position = UDim2.new(0, 0, 1, touch and (compact and -28 or -34) or (compact and -20 or -26)),
+        BackgroundTransparency = 1,
+    }, {
+        create("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            Padding = UDim.new(0, 6),
+            HorizontalAlignment = Enum.HorizontalAlignment.Center,
+        }),
+    })
+    btnRow.Parent = holder
+
+    local function updateDisplay()
+        timeDisplay.Text = string.format("%02d:%02d", remaining // 60, remaining % 60)
+    end
+
+    local function resetTimer()
+        running = false
+        paused = false
+        remaining = duration
+        updateDisplay()
+        if config.Callback then
+            pcall(config.Callback, "reset", remaining)
+        end
+    end
+
+    local function togglePause()
+        if not running then
+            running = true
+            paused = false
+            if config.Callback then
+                pcall(config.Callback, "start", remaining)
+            end
+        else
+            paused = not paused
+            if config.Callback then
+                pcall(config.Callback, paused and "pause" or "resume", remaining)
+            end
+        end
+    end
+
+    local startBtn = create("TextButton", {
+        Text = "▶",
+        Font = Enum.Font.GothamBold,
+        TextSize = touch and (compact and 14 or 16) or (compact and 12 or 14),
+        TextColor3 = Theme.Text,
+        BackgroundColor3 = Theme.ElementHover,
+        Size = UDim2.new(0, touch and (compact and 50 or 60) or (compact and 40 or 50), 1, 0),
+    }, { corner(8) })
+    startBtn.Parent = btnRow
+
+    local resetBtn = create("TextButton", {
+        Text = "⟳",
+        Font = Enum.Font.GothamBold,
+        TextSize = touch and (compact and 14 or 16) or (compact and 12 or 14),
+        TextColor3 = Theme.Text,
+        BackgroundColor3 = Theme.ElementHover,
+        Size = UDim2.new(0, touch and (compact and 50 or 60) or (compact and 40 or 50), 1, 0),
+    }, { corner(8) })
+    resetBtn.Parent = btnRow
+
+    startBtn.MouseButton1Click:Connect(togglePause)
+    resetBtn.MouseButton1Click:Connect(resetTimer)
+
+    local connection
+    local function startTimerLoop()
+        if connection then connection:Disconnect() end
+        connection = RunService.Heartbeat:Connect(function(delta)
+            if running and not paused and remaining > 0 then
+                remaining = remaining - delta
+                if remaining <= 0 then
+                    remaining = 0
+                    running = false
+                    if config.Callback then
+                        pcall(config.Callback, "complete", remaining)
+                    end
+                end
+                updateDisplay()
+                startBtn.Text = paused and "▶" or "⏸"
+            end
+        end)
+    end
+    startTimerLoop()
+
+    local handle = {
+        Set = function(_, newDuration)
+            duration = newDuration
+            remaining = newDuration
+            resetTimer()
+        end,
+        Get = function() return remaining end,
+        Reset = resetTimer,
+        Start = function()
+            running = true
+            paused = false
+            startBtn.Text = "⏸"
+        end,
+        Pause = function()
+            paused = true
+            startBtn.Text = "▶"
+        end,
+        Resume = function()
+            paused = false
+            startBtn.Text = "⏸"
+        end,
+        Destroy = function()
+            if connection then connection:Disconnect() end
+            if holder then holder:Destroy() end
+        end,
+    }
+
+    holder.AncestryChanged:Connect(function(_, parent)
+        if not parent and connection then
+            connection:Disconnect()
+        end
+    end)
+
+    return Library:_wrapElement(holder, handle)
+end
+
+-- ============================================================
+-- CHECKLIST
+-- ============================================================
+
+function TM:CreateChecklist(config)
+    config = config or {}
+    local touch = self._touch
+    local compact = Library.Flags.CompactMode
+    local items = config.Items or {}
+
+    local holder = create("Frame", {
+        Size = UDim2.new(1, 0, 0, touch and (compact and 32 or 40) or (compact and 24 or 30)),
+        BackgroundColor3 = Theme.Element,
+        AutomaticSize = Enum.AutomaticSize.Y,
+    }, { corner(12), stroke() })
+    holder.Parent = self._page
+    setSearchMeta(holder, config, "Checklist")
+
+    create("TextLabel", {
+        Text = config.Name or "Checklist",
+        Font = Enum.Font.GothamBold,
+        TextSize = touch and (compact and 13 or 15) or (compact and 11 or 13),
+        TextColor3 = Theme.Text,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, touch and (compact and 18 or 24) or (compact and 14 or 18)),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        LayoutOrder = 0,
+    }).Parent = holder
+
+    local list = create("Frame", {
+        Size = UDim2.new(1, -10, 0, 0),
+        Position = UDim2.new(0, 5, 0, touch and (compact and 22 or 28) or (compact and 18 or 22)),
+        BackgroundTransparency = 1,
+        AutomaticSize = Enum.AutomaticSize.Y,
+    }, {
+        create("UIListLayout", {
+            Padding = UDim.new(0, compact and 2 or 4),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+        }),
+        create("UIPadding", {
+            PaddingBottom = UDim.new(0, compact and 4 or 6),
+        }),
+    })
+    list.Parent = holder
+
+    local checkStates = {}
+    local checkboxes = {}
+
+    local function updateProgress()
+        local total = #items
+        local done = 0
+        for _, state in pairs(checkStates) do
+            if state then done = done + 1 end
+        end
+        if config.Callback then
+            pcall(config.Callback, done, total, checkStates)
+        end
+    end
+
+    for i, item in ipairs(items) do
+        local row = create("Frame", {
+            Size = UDim2.new(1, 0, 0, touch and (compact and 22 or 28) or (compact and 18 or 22)),
+            BackgroundTransparency = 1,
+            LayoutOrder = i,
+        }, {
+            create("UIListLayout", {
+                FillDirection = Enum.FillDirection.Horizontal,
+                Padding = UDim.new(0, 8),
+                VerticalAlignment = Enum.VerticalAlignment.Center,
+            }),
         })
-        row.BackgroundTransparency = 1
+        row.Parent = list
 
-        Render.New("Text", {
-            Text = props.Title or props.Flag,
-            TextSize = 14,
-            Size = UDim2.new(1, -160, 0, 18),
-            Theme = "Default",
-            Parent = row,
+        local checkBtn = create("TextButton", {
+            Text = "□",
+            Font = Enum.Font.GothamBold,
+            TextSize = touch and (compact and 16 or 18) or (compact and 14 or 16),
+            TextColor3 = Theme.SubText,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0, touch and (compact and 20 or 24) or (compact and 16 or 20), 1, 0),
         })
+        checkBtn.Parent = row
 
-        self.ValueLabel = Render.New("Text", {
-            Name = "Value",
-            Text = "",
-            TextSize = 13,
-            XAlignment = Enum.TextXAlignment.Center,
-            Size = UDim2.fromOffset(88, 20),
-            Position = UDim2.new(1, -122, 0.5, -10),
-            Theme = "Default",
-            Parent = row,
+        local label = create("TextLabel", {
+            Text = item,
+            Font = Enum.Font.Gotham,
+            TextSize = touch and (compact and 12 or 14) or (compact and 10 or 12),
+            TextColor3 = Theme.Text,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 1, 0),
+            TextXAlignment = Enum.TextXAlignment.Left,
         })
+        label.Parent = row
 
-        local prevBtn = Render.New("Button", {
-            Name = "Prev",
-            Text = "<",
-            TextSize = 14,
-            Size = UDim2.fromOffset(26, 26),
-            Position = UDim2.new(1, -152, 0.5, -13),
-            CornerRadius = 7,
-            Theme = "Card",
-            Parent = row,
-        })
+        checkStates[i] = false
+        checkboxes[i] = checkBtn
 
-        local nextBtn = Render.New("Button", {
-            Name = "Next",
-            Text = ">",
-            TextSize = 14,
-            Size = UDim2.fromOffset(26, 26),
-            Position = UDim2.new(1, -26, 0.5, -13),
-            CornerRadius = 7,
-            Theme = "Card",
-            Parent = row,
-        })
+        checkBtn.MouseButton1Click:Connect(function()
+            checkStates[i] = not checkStates[i]
+            checkBtn.Text = checkStates[i] and "☑" or "□"
+            checkBtn.TextColor3 = checkStates[i] and Theme.Accent or Theme.SubText
+            updateProgress()
+        end)
+    end
 
-        local index = 1
-        local function indexOf(value)
-            for i, option in ipairs(props.Options) do
-                if option == value then
-                    return i
+    local handle = {
+        Set = function(_, states)
+            for i, state in ipairs(states) do
+                if checkboxes[i] then
+                    checkStates[i] = state
+                    checkboxes[i].Text = state and "☑" or "□"
+                    checkboxes[i].TextColor3 = state and Theme.Accent or Theme.SubText
                 end
             end
-            return nil
-        end
-
-        function self.Set(a, b)
-            -- accepts both .Set(value) (Flags sync) and :Set(value) (user calls)
-            local value = b
-            if a ~= self then
-                value = a
+            updateProgress()
+        end,
+        Get = function() return checkStates end,
+        Toggle = function(index)
+            if checkboxes[index] then
+                checkStates[index] = not checkStates[index]
+                checkboxes[index].Text = checkStates[index] and "☑" or "□"
+                checkboxes[index].TextColor3 = checkStates[index] and Theme.Accent or Theme.SubText
+                updateProgress()
             end
-            if props.Flag then
-                Flags.SetFlag(props.Flag, value, true) -- silent: programmatic Set also persists
+        end,
+        Reset = function()
+            for i in pairs(checkStates) do
+                checkStates[i] = false
+                checkboxes[i].Text = "□"
+                checkboxes[i].TextColor3 = Theme.SubText
             end
-            local i = indexOf(value)
-            if i then
-                index = i
-                self.ValueLabel.Text = tostring(value)
-                if props.Callback then
-                    task.spawn(props.Callback, value)
-                end
-            end
-        end
+            updateProgress()
+        end,
+    }
 
-        local initial = Flags.GetFlag(props.Flag, props.Default or props.Options[1])
-        if indexOf(initial) == nil then
-            initial = props.Options[1]
-        end
-
-        Flags.RegisterElement(props.Flag, self)
-        -- suppressUI + manual paint: the initial value must not fire Callback.
-        Flags.SetFlag(props.Flag, initial, true)
-        index = indexOf(initial) or 1
-        self.ValueLabel.Text = tostring(initial)
-
-        local function move(delta)
-            local nextIndex = index + delta
-            if nextIndex > #props.Options then
-                nextIndex = (props.Loop ~= false) and 1 or #props.Options
-            elseif nextIndex < 1 then
-                nextIndex = (props.Loop ~= false) and #props.Options or 1
-            end
-            Flags.SetFlag(props.Flag, props.Options[nextIndex])
-        end
-
-        prevBtn.MouseButton1Click:Connect(function() move(-1) end)
-        nextBtn.MouseButton1Click:Connect(function() move(1) end)
-
-        return self
-    end
-
-    return { Card = Card, ProgressBar = ProgressBar, RadioGroup = RadioGroup, Stepper = Stepper, Cycle = Cycle }
+    return Library:_wrapElement(holder, handle)
+end
 end

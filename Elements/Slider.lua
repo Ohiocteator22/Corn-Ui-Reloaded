@@ -1,249 +1,135 @@
 --[[
-    CornUi v2.0 — Elements/Slider.lua
-    Registers Section:CreateSlider(props).
+    CreateSlider — verbatim v1.9.4d.
 
-    props = {
-        Title = "Slider Name",
-        Flag  = "MySliderFlag",
-        Min = 0, Max = 100, Increment = 1,
-        Default = 50,
-        Callback = function(value) end,
-    }
-
-    Tap the value label to type an exact value (v1 parity, rebuilt): an
-    inline editor replaces the label, commits on Enter/focus-loss, rejects
-    garbage, and clamps/rounds to the slider's increment.
+    The Lua below is the v1.9.4d source, verbatim, split out of the original
+    monolith. Only the prelude (binding the monolith's file-local upvalues to
+    the module table) and the trailing module export are ours; the bodies are
+    byte-identical to upload/CornUi.lua lines 3342-3443. The window chrome,
+    intro, stacking and every element behave exactly as v1.9.4d shipped.
 ]]
 
+-- CornUi v1.9.4d (modular) — Elements/Slider.lua
 return function(Modules)
-
+    -- Verbatim-body prelude (the only non-v1.9.4d code in this file): binds
+    -- the monolith's file-local upvalues to the module system. The loader's
+    -- shared table IS the facade, so `Library.X` below reads exactly like
+    -- the v1.9.4d source; every extracted body is byte-identical to it.
+    local Library = Modules
     local Render = Modules.Render
-    local Flags = Modules.Flags
-    local Theme = Modules.Theme
-    local Section = Modules.Window.Section
+    local Theme = Modules.Theme.Theme
+    local TM = Modules.TabMethods
+    local UserInputService = Render.UserInputService
+    local TweenService = Render.TweenService
+    local RunService = Render.RunService
+    local create = Render.create
+    local corner = Render.corner
+    local setSearchMeta = Render.setSearchMeta
+    local stroke = Render.stroke
+    local tween = Render.tween
+    local playInteractionSound = Render.playInteractionSound
+    local ripple = Render.ripple
+    local shiftZIndex = Render.shiftZIndex
 
-    local UserInputService = game:GetService("UserInputService")
+-- ============================================================
+-- SLIDER
+-- ============================================================
 
-    local Slider = {}
-    Slider.__index = Slider
+function TM:CreateSlider(config)
+    config = config or {}
+    local touch = self._touch
+    local compact = Library.Flags.CompactMode
+    local min = config.Min or 0
+    local max = config.Max or 100
+    local default = config.Default or min
+    local callback = config.Callback or function() end
 
-    local function round(value, increment)
-        increment = increment or 1
-        return math.floor((value / increment) + 0.5) * increment
+    local holder = create("Frame", {
+        Size = UDim2.new(1, 0, 0, touch and (compact and 48 or 58) or (compact and 38 or 46)),
+        BackgroundColor3 = Theme.Element,
+    }, { corner(12), stroke() })
+    holder.Parent = self._page
+    setSearchMeta(holder, config, "Slider")
+
+    if config.Flag then Library:SetFlag(config.Flag, default) end
+
+    local label = create("TextLabel", {
+        Text = (config.Name or "Slider") .. ": " .. tostring(default),
+        Font = Enum.Font.GothamMedium,
+        TextSize = touch and (compact and 13 or 15) or (compact and 11 or 13),
+        TextColor3 = Theme.Text,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -20, 0, 22),
+        Position = UDim2.new(0, 12, 0, compact and 2 or 4),
+        TextXAlignment = Enum.TextXAlignment.Left,
+    })
+    label.Parent = holder
+
+    local track = create("Frame", {
+        Size = UDim2.new(1, -24, 0, touch and (compact and 10 or 14) or (compact and 6 or 8)),
+        Position = UDim2.new(0, 12, 1, touch and (compact and -18 or -22) or (compact and -14 or -16)),
+        BackgroundColor3 = Color3.fromRGB(55, 55, 62),
+    }, { corner(10) })
+    track.Parent = holder
+
+    local fraction = (default - min) / (max - min)
+    local fill = create("Frame", {
+        Size = UDim2.new(fraction, 0, 1, 0),
+        BackgroundColor3 = Theme.Accent,
+    }, { corner(10) })
+    fill.Parent = track
+    fill:SetAttribute("MUI_AccentSurface", true) -- eligible for a Skin's AccentTexture; always accent-colored
+    Library:_applyAccentOverlay(fill, true)
+
+    local hitArea = create("TextButton", {
+        Text = "",
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, touch and (compact and 34 or 40) or (compact and 20 or 26)),
+        Position = UDim2.new(0, 0, 0.5, 0),
+        AnchorPoint = Vector2.new(0, 0.5),
+    })
+    hitArea.Parent = track
+
+    local dragging = false
+
+    local function setFromInputPosition(xPos)
+        local relative = math.clamp((xPos - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+        fill.Size = UDim2.new(relative, 0, 1, 0)
+        local value = math.floor(min + (max - min) * relative)
+        label.Text = (config.Name or "Slider") .. ": " .. tostring(value)
+        if config.Flag then Library:SetFlag(config.Flag, value) end
+        local ok, err = pcall(callback, value)
+        if not ok then warn("[MobileUILib] Slider callback error: " .. tostring(err)) end
     end
 
-    local function clamp(value, min, max)
-        return math.clamp(value, min, max)
-    end
-
-    function Slider.New(section, props)
-        props.Flag = props.Flag or Flags.NextAutoFlag()
-        local min = props.Min or 0
-        local max = props.Max or 100
-        local increment = props.Increment or 1
-
-        local self = setmetatable({}, Slider)
-        self.Flag = props.Flag
-        self.Min, self.Max, self.Increment = min, max, increment
-
-        local row = Render.New("Frame", {
-            Name = "Slider_" .. props.Flag,
-            Size = UDim2.new(1, 0, 0, 44),
-            Theme = false,
-            Parent = section.Frame,
-        })
-        row.BackgroundTransparency = 1
-
-        self.Label = Render.New("Text", {
-            Text = props.Title or props.Flag,
-            TextSize = 14,
-            Size = UDim2.new(1, -50, 0, 18),
-            Theme = "Default",
-            Parent = row,
-        })
-
-        self.ValueLabel = Render.New("Text", {
-            Text = "",
-            TextSize = 14,
-            XAlignment = Enum.TextXAlignment.Right,
-            Size = UDim2.fromOffset(50, 18),
-            Position = UDim2.new(1, -50, 0, 0),
-            Theme = "Muted",
-            Parent = row,
-        })
-
-        -- Inline exact-value editor: built lazily on first tap so sliders
-        -- that are never typed into cost nothing. Takes the value label's
-        -- place while active.
-        local valueEditor
-
-        local function commitEditor()
-            if not valueEditor then return end
-            local text = valueEditor.Text:gsub("%s", "")
-            local number = tonumber(text)
-            if number then
-                Flags.SetFlag(props.Flag, clamp(round(number, increment), min, max))
-            end
-            valueEditor.Visible = false
-            self.ValueLabel.Visible = true
+    hitArea.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            setFromInputPosition(input.Position.X)
         end
+    end)
 
-        local function openEditor()
-            if not valueEditor then
-                valueEditor = Instance.new("TextBox")
-                valueEditor.Name = "ValueEditor"
-                valueEditor.BackgroundTransparency = 1
-                valueEditor.Size = UDim2.fromOffset(50, 18)
-                valueEditor.Position = UDim2.new(1, -50, 0, 0)
-                valueEditor.TextSize = 14
-                valueEditor.ClearTextOnFocus = false
-                valueEditor.TextXAlignment = Enum.TextXAlignment.Right
-                valueEditor.Text = tostring(Flags.GetFlag(props.Flag, min))
-                valueEditor.TextColor3 = Theme.GetStyle("Text", "Default").Color
-                    or Color3.fromRGB(255, 255, 255)
-                valueEditor.Visible = false
-                valueEditor.Parent = row
-
-                valueEditor.FocusLost:Connect(function(enterPressed)
-                    if enterPressed then
-                        commitEditor()
-                    else
-                        -- Focus moved elsewhere: keep the edit (it commits on
-                        -- the next tap), but restore the numeric label.
-                        commitEditor()
-                    end
-                end)
-            end
-            valueEditor.Text = tostring(Flags.GetFlag(props.Flag, min))
-            self.ValueLabel.Visible = false
-            valueEditor.Visible = true
-            task.defer(function()
-                valueEditor:CaptureFocus()
-            end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch) then
+            setFromInputPosition(input.Position.X)
         end
+    end)
 
-        local valueTap = Instance.new("TextButton")
-        valueTap.Name = "ValueTap"
-        valueTap.BackgroundTransparency = 1
-        valueTap.Text = ""
-        valueTap.Size = UDim2.fromOffset(50, 18)
-        valueTap.Position = UDim2.new(1, -50, 0, 0)
-        valueTap.ZIndex = self.ValueLabel.ZIndex + 1
-        valueTap.Parent = row
-        valueTap.MouseButton1Click:Connect(openEditor)
-
-        self.Track = Render.New("Frame", {
-            Name = "Track",
-            Size = UDim2.new(1, 0, 0, 6),
-            Position = UDim2.fromOffset(0, 26),
-            CornerRadius = 3,
-            Theme = "Default",
-            Parent = row,
-        })
-
-        self.Fill = Render.New("Frame", {
-            Name = "Fill",
-            Size = UDim2.new(0, 0, 1, 0),
-            CornerRadius = 3,
-            Theme = "Enabled",
-            Parent = self.Track,
-        })
-
-        self.Knob = Render.New("Frame", {
-            Name = "Knob",
-            Size = UDim2.fromOffset(14, 14),
-            Position = UDim2.new(0, -7, 0.5, -7),
-            AnchorPoint = Vector2.new(0, 0),
-            CornerRadius = 7,
-            Color = Color3.fromRGB(255, 255, 255),
-            Theme = false,
-            Parent = self.Track,
-        })
-
-        local hitbox = Instance.new("TextButton")
-        hitbox.BackgroundTransparency = 1
-        hitbox.Text = ""
-        hitbox.Size = UDim2.new(1, 0, 1, 12)
-        hitbox.Position = UDim2.fromOffset(0, -6)
-        hitbox.ZIndex = self.Track.ZIndex + 2
-        hitbox.Parent = self.Track
-
-        local function setVisual(value)
-            local range = max - min
-            local alpha = (range ~= 0) and (value - min) / range or 1
-            alpha = clamp(alpha, 0, 1)
-            self.Fill.Size = UDim2.new(alpha, 0, 1, 0)
-            self.Knob.Position = UDim2.new(alpha, -7, 0.5, -7)
-            self.ValueLabel.Text = tostring(value)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
         end
+    end)
 
-        function self.Set(a, b)
-            -- accepts both .Set(value) (Flags sync) and :Set(value) (user calls)
-            local value = b
-            if a ~= self then
-                value = a
-            end
-            if props.Flag then
-                Flags.SetFlag(props.Flag, value, true) -- silent: programmatic Set also persists
-            end
-            setVisual(value)
-            if props.Callback then
-                task.spawn(props.Callback, value)
-            end
-        end
-
-        local dragging = false
-
-        local function updateFromInputX(inputX)
-            local trackAbsPos = self.Track.AbsolutePosition.X
-            local trackAbsSize = self.Track.AbsoluteSize.X
-            if trackAbsSize <= 0 then return end -- not laid out yet / invisible
-            local alpha = clamp((inputX - trackAbsPos) / trackAbsSize, 0, 1)
-            local value = round(min + (max - min) * alpha, increment)
-            value = clamp(value, min, max)
-            Flags.SetFlag(props.Flag, value)
-        end
-
-        hitbox.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-                or input.UserInputType == Enum.UserInputType.Touch then
-                dragging = true
-                updateFromInputX(input.Position.X)
-            end
-        end)
-
-        local changedConn = UserInputService.InputChanged:Connect(function(input)
-            if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
-                or input.UserInputType == Enum.UserInputType.Touch) then
-                updateFromInputX(input.Position.X)
-            end
-        end)
-
-        local endedConn = UserInputService.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-                or input.UserInputType == Enum.UserInputType.Touch then
-                dragging = false
-            end
-        end)
-
-        if section.Window then
-            section.Window:OnCleanup(function()
-                changedConn:Disconnect()
-                endedConn:Disconnect()
-            end)
-        end
-
-        local initial = clamp(Flags.GetFlag(props.Flag, props.Default or min), min, max)
-        Flags.RegisterElement(props.Flag, self)
-        Flags.SetFlag(props.Flag, initial, true)
-        setVisual(initial)
-
-        return self
-    end
-
-    Section.CreateSlider = function(section, props)
-        return Slider.New(section, props)
-    end
-
-    return Slider
+    local handle = { Set = function(_, value)
+        local relative = math.clamp((value - min) / (max - min), 0, 1)
+        fill.Size = UDim2.new(relative, 0, 1, 0)
+        label.Text = (config.Name or "Slider") .. ": " .. tostring(value)
+        if config.Flag then Library:SetFlag(config.Flag, value) end
+    end, Get = function() return config.Flag and Library:GetFlag(config.Flag) or nil end }
+    if config.Flag then Library.FlagElements[config.Flag] = handle end
+    return Library:_wrapElement(holder, handle)
+end
 end

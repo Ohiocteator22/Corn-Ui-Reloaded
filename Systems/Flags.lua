@@ -1,92 +1,93 @@
 --[[
-    CornUi v2.0 — Systems/Flags.lua
-    Central value store for every element's state. Elements read/write through
-    this instead of holding their own state, so Config can serialize everything
-    generically and multiple UI pieces can stay in sync via FlagChanged.
+    Flag manager, keybind registry, notification log, custom-element registry — verbatim v1.9.4d.
+
+    The Lua below is the v1.9.4d source, verbatim, split out of the original
+    monolith. Only the prelude (binding the monolith's file-local upvalues to
+    the module table) and the trailing module export are ours; the bodies are
+    byte-identical to upload/CornUi.lua lines 46-51, 57-105, 465-479. The window chrome,
+    intro, stacking and every element behave exactly as v1.9.4d shipped.
 ]]
 
+-- CornUi v1.9.4d (modular) — Systems/Flags.lua
 return function(Modules)
+    local Library = Modules
 
-    local Flags = {}
+-- ============ LIBRARY STATE (v1.9.4d lines 46-51) ============
 
-    local Store = {}            -- [flagName] = value
-    local ChangedEvent = Instance.new("BindableEvent")
-    local PerFlagEvents = {}    -- [flagName] = BindableEvent, for targeted listeners
+Library._customElements = {}
+Library._themeHistory = {}
+Library._windowPositions = {}
 
-    -- UI sync registry: elements register themselves here so Config/Theme or
-    -- external SetFlag calls can push a value back into the live UI control.
-    local FlagElements = {}     -- [flagName] = { Set = function(value) ... end, ... }
-    Flags.FlagElements = FlagElements
+Library.VERSION = "1.9.3"
+Library.BUILD = "2024.08.07"
 
-    function Flags.SetFlag(name, value, suppressUI)
-        assert(type(name) == "string", "SetFlag: flag name must be a string")
+-- ============ FLAG MANAGER / KEYBINDS / NOTIFICATION LOG (lines 57-105) ============
 
-        local old = Store[name]
-        Store[name] = value
+Library.Flags = {
+    UISounds = true,
+    Haptics = true,
+    UIScale = 1,
+    CompactMode = false,
+    ShowIntro = true,
+    SnapToEdges = false,
+    TabReordering = true,
+    AutoSaveInterval = 60,
+    RememberPosition = true,
+    ReducedMotion = false,
+    PerformanceMode = false,
+}
 
-        if old ~= value then
-            ChangedEvent:Fire(name, value, old)
-            local perFlag = PerFlagEvents[name]
-            if perFlag then
-                perFlag:Fire(value, old)
-            end
-        end
+local flagChangedEvent = Instance.new("BindableEvent")
+Library.FlagChanged = flagChangedEvent.Event
 
-        if not suppressUI then
-            local element = FlagElements[name]
-            if element and element.Set then
-                element.Set(value)
-            end
-        end
+function Library:GetFlag(name)
+    return Library.Flags[name]
+end
+
+function Library:SetFlag(name, value)
+    if not name then return end
+    Library.Flags[name] = value
+    flagChangedEvent:Fire(name, value)
+end
+
+Library.FlagElements = {}
+
+-- ============================================================
+-- KEYBIND REGISTRY
+-- ============================================================
+
+Library.Keybinds = {}
+local keybindRegisteredEvent = Instance.new("BindableEvent")
+Library.KeybindRegistered = keybindRegisteredEvent.Event
+local keybindChangedEvent = Instance.new("BindableEvent")
+Library.KeybindChanged = keybindChangedEvent.Event
+local keybindUnregisteredEvent = Instance.new("BindableEvent")
+Library.KeybindUnregistered = keybindUnregisteredEvent.Event
+
+-- ============================================================
+-- NOTIFICATION HISTORY
+-- ============================================================
+
+Library.NotificationHistory = {}
+Library.MAX_NOTIFICATION_HISTORY = 50
+local notificationLoggedEvent = Instance.new("BindableEvent")
+Library.NotificationLogged = notificationLoggedEvent.Event
+
+-- ============ CUSTOM ELEMENT REGISTRATION (lines 465-479) ============
+
+function Library:RegisterElement(name, constructor)
+    if type(name) ~= "string" or type(constructor) ~= "function" then
+        warn("[MobileUILib] RegisterElement requires a name string and a constructor function")
+        return
     end
+    Library._customElements[name] = constructor
+end
 
-    function Flags.GetFlag(name, default)
-        local value = Store[name]
-        if value == nil then
-            return default
-        end
-        return value
+function Library:GetRegisteredElements()
+    local list = {}
+    for name in pairs(Library._customElements) do
+        table.insert(list, name)
     end
-
-    function Flags.GetAllFlags()
-        local copy = {}
-        for k, v in pairs(Store) do
-            copy[k] = v
-        end
-        return copy
-    end
-
-    -- Fires (name, newValue, oldValue) for any flag change.
-    Flags.FlagChanged = ChangedEvent.Event
-
-    -- Scoped listener for a single flag, avoids filtering the global event.
-    function Flags.OnFlagChanged(name, callback)
-        if not PerFlagEvents[name] then
-            PerFlagEvents[name] = Instance.new("BindableEvent")
-        end
-        return PerFlagEvents[name].Event:Connect(callback)
-    end
-
-    -- Called by element constructors (Toggle, Slider, etc.) to register the
-    -- function that updates their visual state when SetFlag is called externally.
-    function Flags.RegisterElement(name, controller)
-        assert(type(controller) == "table" and controller.Set,
-            "RegisterElement: controller must provide a Set(value) function")
-        FlagElements[name] = controller
-    end
-
-    function Flags.UnregisterElement(name)
-        FlagElements[name] = nil
-    end
-
-    -- Elements without a Flag call this so callback-only scripts (v1 style)
-    -- still get a unique backing key for the store — required for config
-    -- save/load and SetFlag→UI sync, invisible to the script author.
-    local AutoFlagSeq = 0
-    function Flags.NextAutoFlag()
-        AutoFlagSeq += 1
-        return "_CornUi_Auto_" .. tostring(AutoFlagSeq)
-    end
-
-    return Flags
+    return list
+end
 end
