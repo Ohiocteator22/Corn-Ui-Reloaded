@@ -306,44 +306,30 @@ return function(Modules)
 
         self.Frame = Render.New("Frame", {
             Name = "Card_" .. (props.Title or "Card"),
-            Size = UDim2.new(1, 0, 0, 0),
-            AutomaticSize = Enum.AutomaticSize.Y,
+            Size = UDim2.new(1, 0, 0, 26), -- stacked by the shell engine as rows land
             CornerRadius = 6,
             Theme = "Card",
             Parent = section.Frame,
         })
 
-        local layout = Instance.new("UIListLayout")
-        layout.SortOrder = Enum.SortOrder.LayoutOrder
-        layout.Padding = UDim.new(0, 4)
-        layout.Parent = self.Frame
-
-        local padding = Instance.new("UIPadding")
-        padding.PaddingTop = UDim.new(0, 8)
-        padding.PaddingBottom = UDim.new(0, 8)
-        padding.PaddingLeft = UDim.new(0, 8)
-        padding.PaddingRight = UDim.new(0, 8)
-        padding.Parent = self.Frame
+        -- Same explicit-Y engine as sections/pages: rows are placed by
+        -- arithmetic and the card grows through its Size signal, which the
+        -- parent section's stack picks up automatically.
+        Modules.Window.Stack.Attach(self.Frame, {
+            Top = 8,
+            Gap = 4,
+            Bottom = 8,
+            RowFallback = 22,
+        })
 
         if props.Title then
-            -- Gold notch mark beside the card title (matches section titles).
-            Render.New("Frame", {
-                Name = "TitleNotch",
-                Size = UDim2.fromOffset(2, 12),
-                Position = UDim2.fromOffset(0, 3),
-                CornerRadius = 1,
-                Theme = "Enabled",
-                LayoutOrder = 0,
-                Parent = self.Frame,
-            })
-
             Render.New("Text", {
+                Name = "CardTitle",
                 Text = props.Title,
-                TextSize = 15,
+                TextSize = 13,
+                Font = Enum.Font.GothamMedium,
+                Size = UDim2.new(1, -16, 0, 16),
                 Theme = "Default",
-                Size = UDim2.new(1, -10, 0, 18),
-                Position = UDim2.fromOffset(10, 0),
-                LayoutOrder = 1,
                 Parent = self.Frame,
             })
         end
@@ -369,9 +355,11 @@ return function(Modules)
             TextWrapped = true,
             XAlignment = Enum.TextXAlignment.Left,
             YAlignment = Enum.TextYAlignment.Top,
+            -- Explicit height estimate (13px text ~ 52 chars/line): the
+            -- shell stacks by arithmetic, so paragraphs book real pixels
+            -- up front instead of relying on AutomaticSize.
             Size = props.Height and UDim2.new(1, 0, 0, props.Height)
-                or UDim2.new(1, 0, 0, 0), -- AutomaticSize grows to fit the text
-            AutomaticSize = props.Height and nil or Enum.AutomaticSize.Y,
+                or UDim2.new(1, 0, 0, math.max(1, math.ceil(#tostring(props.Text or "") / 52)) * 16 + 4),
             Theme = props.Muted and "Muted" or "Default",
             Parent = section.Frame,
         })

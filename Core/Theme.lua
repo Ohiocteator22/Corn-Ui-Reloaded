@@ -19,38 +19,37 @@ return function(Modules)
     -- Built-in default themes
     ------------------------------------------------------------
 
-    -- Corn/kernel identity: warm roasted-husk darks and cream lights,
-    -- gold kernel accent shared across both. Replaces the generic
-    -- gray/green placeholder palette used during initial construction.
+    -- CornUi v1.9.x identity: near-black neutral darks, one gold accent,
+    -- light gray text. Sampled from the original hub screenshots/videos.
     Themes.Dark = {
         Frame = {
-            Default = { Color = Color3.fromRGB(26, 20, 16), CornerRadius = 8 },   -- #1A1410
-            Window  = { Color = Color3.fromRGB(26, 20, 16), CornerRadius = 10 },  -- #1A1410
-            Card    = { Color = Color3.fromRGB(36, 29, 22), CornerRadius = 6 },   -- #241D16
-            Enabled = { Color = Color3.fromRGB(232, 163, 61), CornerRadius = 10 }, -- #E8A33D
+            Default = { Color = Color3.fromRGB(29, 32, 38), CornerRadius = 6 },   -- #1D2026 controls
+            Window  = { Color = Color3.fromRGB(15, 16, 19), CornerRadius = 10 },  -- #0F1013 shell
+            Card    = { Color = Color3.fromRGB(22, 24, 29), CornerRadius = 6 },   -- #16181D sections
+            Enabled = { Color = Color3.fromRGB(241, 206, 27), CornerRadius = 6 }, -- #F1CE1B gold accent
         },
         Text = {
-            Default = { Color = Color3.fromRGB(245, 233, 211) }, -- #F5E9D3
-            Muted   = { Color = Color3.fromRGB(184, 168, 136) }, -- #B8A888
+            Default = { Color = Color3.fromRGB(242, 243, 245) }, -- #F2F3F5
+            Muted   = { Color = Color3.fromRGB(138, 143, 152) }, -- #8A8F98
         },
         Icon = {
-            Default = { Color = Color3.fromRGB(245, 233, 211) }, -- #F5E9D3
+            Default = { Color = Color3.fromRGB(242, 243, 245) }, -- #F2F3F5
         },
     }
 
     Themes.Light = {
         Frame = {
-            Default = { Color = Color3.fromRGB(250, 243, 227), CornerRadius = 8 },  -- #FAF3E3
-            Window  = { Color = Color3.fromRGB(250, 243, 227), CornerRadius = 10 }, -- #FAF3E3
-            Card    = { Color = Color3.fromRGB(240, 230, 204), CornerRadius = 6 },  -- #F0E6CC
-            Enabled = { Color = Color3.fromRGB(214, 144, 31), CornerRadius = 10 },  -- #D6901F
+            Default = { Color = Color3.fromRGB(220, 222, 227), CornerRadius = 6 },  -- #DCDEE3
+            Window  = { Color = Color3.fromRGB(244, 245, 247), CornerRadius = 10 }, -- #F4F5F7
+            Card    = { Color = Color3.fromRGB(233, 235, 239), CornerRadius = 6 },  -- #E9EBEF
+            Enabled = { Color = Color3.fromRGB(200, 149, 26), CornerRadius = 6 },   -- #C8951A gold
         },
         Text = {
-            Default = { Color = Color3.fromRGB(43, 32, 19) },  -- #2B2013
-            Muted   = { Color = Color3.fromRGB(138, 123, 92) }, -- #8A7B5C
+            Default = { Color = Color3.fromRGB(23, 24, 28) },  -- #17181C
+            Muted   = { Color = Color3.fromRGB(106, 111, 120) }, -- #6A6F78
         },
         Icon = {
-            Default = { Color = Color3.fromRGB(43, 32, 19) }, -- #2B2013
+            Default = { Color = Color3.fromRGB(23, 24, 28) }, -- #17181C
         },
     }
 
@@ -427,18 +426,18 @@ return function(Modules)
     -- Window and Elements stay visually coherent without magic numbers.
     -- Values are pixels; colors deliberately come from theme roles instead.
     Theme.Tokens = {
-        TitleHeight = 22,       -- title bar text row height
-        AccentLineHeight = 2,   -- gold accent line under the title bar
-        TabBarHeight = 30,      -- pill tab strip height
-        IndicatorHeight = 3,    -- sliding gold underline under the active tab
-        RowHeight = 28,         -- standard single-line element row
+        TitleHeight = 34,        -- header strip (title + minimize row)
+        SidebarWidth = 98,       -- left tab rail
+        SidebarTabHeight = 26,   -- tab pill height in the rail
+        SidebarTabGap = 4,       -- vertical gap between pills
+        RowHeight = 30,          -- standard single-line element row
         RowWithDescription = 42,
-        ChipCorner = 7,         -- kernel chip / small squares
-        PanelCorner = 8,        -- dropdown / picker pop panels
+        PanelCorner = 8,         -- dropdown / picker pop panels
+        PillCorner = 6,          -- tabs, chips, small cards
     }
 
-    -- Default to Frost for the Christmas release.
-    ActiveName = "Frost"
+    -- Default to Dark: the v1.9.x near-black + gold hub identity.
+    ActiveName = "Dark"
 
     return Theme
 end

@@ -959,36 +959,23 @@ return function(Modules)
             Name = config.GuiName,
             Size = config.Size,
             Position = config.Position,
+            Icon = config.Icon, -- rendered by the native header chrome
             Intro = config.Intro,
         })
 
-        -- Subtitle: small muted line, right-aligned inside the title bar.
+        -- Subtitle: small muted line, right-aligned inside the header.
         if config.Subtitle then
             Render.New("Text", {
                 Name = "Subtitle",
                 Text = tostring(config.Subtitle),
                 TextSize = 11,
                 XAlignment = Enum.TextXAlignment.Right,
+                AnchorPoint = Vector2.new(1, 0),
                 Size = UDim2.new(0, 0, 1, 0),
                 AutomaticSize = Enum.AutomaticSize.X,
-                Position = UDim2.new(1, -90, 0, 0),
+                Position = UDim2.new(1, -36, 0, 0),
                 Theme = "Muted",
-                Parent = window.Root,
-            })
-        end
-
-        if config.Icon then
-            local chip = window.Root:FindFirstChild("KernelChip")
-            if chip then
-                chip.Visible = false
-            end
-            Render.New("Icon", {
-                Name = "WindowIcon",
-                Image = normalizeAsset(config.Icon),
-                Size = UDim2.fromOffset(22, 22),
-                Position = UDim2.fromOffset(8, 6),
-                Theme = false,
-                Parent = window.Root,
+                Parent = window.Header,
             })
         end
 

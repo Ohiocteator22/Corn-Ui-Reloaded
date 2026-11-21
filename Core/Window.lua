@@ -1,22 +1,25 @@
 --[[
     CornUi v2.0 — Core/Window.lua
     Window -> Tab -> Section shell, built entirely on Render.New / Theme.
-    Elements attach to Sections via Section:Add(instance) or the element
-    modules' own Section:CreateX(...) sugar (registered by Elements/*).
 
-    Shell design (the corn identity, drawn with plain frames — zero image
-    assets to download, zero texture memory):
-      - a gold "kernel chip" beside the window title (Enabled role + sheen)
-      - a soft gold accent line under the title bar
-      - pill-shaped tabs with a sliding gold underline indicator
-      - gold notch marks on section titles
+    Visual identity (restored to the CornUi v1.9.x look — near-black window,
+    gold accent, left sidebar tabs):
+      - 34px header: title left, optional icon, minimize chip right
+      - 98px sidebar rail: tab pills, the active one fills gold (Enabled)
+      - scrollable page area right of the rail, sections as dark cards
+
+    Layout engine (executor-proof):
+      NO UIListLayout, NO AutomaticSize anywhere in the shell. Every row /
+      section / page is placed by explicit Y arithmetic in ChildAdded hooks
+      (Render sets Size before Parent, so heights are final at hook time).
+      Nested list layouts + AutomaticSize stack elements on one spot on
+      several executors; arithmetic cannot fail.
 
     Perf contract (mobile-first):
       - ZIndexBehavior.Sibling (cheaper than Global resolution)
-      - the intro animation is lighter (9 shards) and skipped entirely on
-        Render.SetQuality("Low")
-      - no ClipsDescendants on auto-sizing containers
-      - tab indicator tween is one property pair, skipped on Low quality
+      - intro is a 0.2s fade — the v2 frost/shatter overlay stranded windows
+        on some executors and is gone
+      - tweens skipped entirely on Render.SetQuality("Low")
 
     Usage:
         local window = WindowModule.New({ Title = "CornUi v2.0" })
@@ -42,30 +45,50 @@ return function(Modules)
     local TopOrder = 0
 
     ------------------------------------------------------------
-    -- Shared: the kernel chip (gold rounded square with a sheen gradient)
+    -- attachStack — the explicit-Y stacking engine (executor-proof).
+    -- Children are placed by arithmetic, never by UIListLayout or
+    -- AutomaticSize: nested list layouts stack every element on one spot on
+    -- several executors. Render guarantees Size is final before Parent
+    -- fires ChildAdded, and any later Size change (a nested Card growing,
+    -- for example) re-runs the whole pass through its property signal.
+    -- Height for zero-height guests falls back to one row.
     ------------------------------------------------------------
 
-    local function buildKernelChip(name, parent, sizePx, position)
-        local chip = Render.New("Frame", {
-            Name = name,
-            Size = UDim2.fromOffset(sizePx, sizePx),
-            Position = position,
-            CornerRadius = Tokens.ChipCorner,
-            Theme = "Enabled",
-            Parent = parent,
-        })
-        -- A white->warm-dark vertical gradient multiplies the themed Enabled
-        -- color into a roasted-kernel sheen, whatever theme is active.
-        Render.New("Gradient", {
-            Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(205, 158, 92)),
-            Rotation = 90,
-            Parent = chip,
-        })
-        return chip
+    local function attachStack(frame, opts)
+        opts = opts or {}
+        local kids = {}
+
+        local function relayout()
+            local padX = opts.PadX or 8
+            local y = opts.Top or 6
+            for _, child in ipairs(kids) do
+                if child.Parent == frame then
+                    child.Position = UDim2.fromOffset(padX, y)
+                    if child.Size.X.Scale == 1 and child.Size.X.Offset == 0 then
+                        child.Size = UDim2.new(1, -(padX * 2), child.Size.Y.Scale, child.Size.Y.Offset)
+                    end
+                    local h = child.Size.Y.Offset
+                    if h <= 0 then h = opts.RowFallback or 26 end
+                    y = y + h + (opts.Gap or 6)
+                end
+            end
+            frame.Size = UDim2.new(1, 0, 0, y - (opts.Gap or 6) + (opts.Bottom or 2))
+            if opts.OnGrow then opts.OnGrow(frame) end
+        end
+
+        frame.ChildAdded:Connect(function(child)
+            if child:IsA("GuiObject") then
+                kids[#kids + 1] = child
+                child:GetPropertyChangedSignal("Size"):Connect(relayout)
+                relayout()
+            end
+        end)
+
+        return frame
     end
 
     ------------------------------------------------------------
-    -- Section
+    -- Section — dark card, rows stacked by attachStack arithmetic
     ------------------------------------------------------------
 
     local Section = {}
@@ -76,47 +99,34 @@ return function(Modules)
 
         local self = setmetatable({}, Section)
         self.Window = window -- back-ref so elements can register cleanup hooks
+        self._cursor = 6     -- stacked content height, kept in sync for pages
 
         self.Frame = Render.New("Frame", {
             Name = "Section_" .. (props.Title or "Unnamed"),
-            Size = UDim2.new(1, 0, 0, 0), -- auto-grows via UIListLayout below
-            AutomaticSize = Enum.AutomaticSize.Y,
+            Size = UDim2.new(1, 0, 0, 30), -- recomputed by the stack engine
             Theme = "Card",
             Parent = parent,
         })
 
-        local layout = Instance.new("UIListLayout")
-        layout.FillDirection = Enum.FillDirection.Vertical
-        layout.SortOrder = Enum.SortOrder.LayoutOrder
-        layout.Padding = UDim.new(0, 6)
-        layout.Parent = self.Frame
-
-        local padding = Instance.new("UIPadding")
-        padding.PaddingTop = UDim.new(0, 8)
-        padding.PaddingBottom = UDim.new(0, 8)
-        padding.PaddingLeft = UDim.new(0, 8)
-        padding.PaddingRight = UDim.new(0, 8)
-        padding.Parent = self.Frame
+        attachStack(self.Frame, {
+            Top = 6,
+            Gap = 6,
+            OnGrow = function()
+                self._cursor = self.Frame.Size.Y.Offset
+                if window and window._syncCanvas then
+                    window:_syncCanvas()
+                end
+            end,
+        })
 
         if props.Title then
-            -- Gold notch beside the section title — a small identity mark,
-            -- two instances instead of an icon asset.
-            Render.New("Frame", {
-                Name = "TitleNotch",
-                Size = UDim2.fromOffset(2, 12),
-                Position = UDim2.fromOffset(0, 3),
-                CornerRadius = 1,
-                Theme = "Enabled",
-                Parent = self.Frame,
-            })
-
             Render.New("Text", {
+                Name = "SectionTitle",
                 Text = props.Title,
-                TextSize = 14,
-                Size = UDim2.new(1, -10, 0, 18),
-                Position = UDim2.fromOffset(10, 0),
+                TextSize = 12,
+                Font = Enum.Font.GothamMedium,
+                Size = UDim2.new(1, -16, 0, 16),
                 Theme = "Muted",
-                LayoutOrder = 0,
                 Parent = self.Frame,
             })
         end
@@ -130,7 +140,7 @@ return function(Modules)
     end
 
     ------------------------------------------------------------
-    -- Tab — pill button + full-size page container
+    -- Tab — sidebar pill + full-size page container
     ------------------------------------------------------------
 
     local Tab = {}
@@ -143,47 +153,49 @@ return function(Modules)
         self.Window = window
         self.Sections = {}
 
-        -- Pill: bound to the Card role so theme switches repaint its fill;
-        -- SelectTab toggles BackgroundTransparency (paint never touches it).
+        -- Stacked pill in the sidebar rail, placed by index (explicit math).
+        local index = #window.Tabs + 1
         self.Pill = Render.New("Frame", {
             Name = "TabPill_" .. (props.Title or "Tab"),
-            Size = UDim2.new(0, 0, 0, Tokens.TabBarHeight - 6),
-            AutomaticSize = Enum.AutomaticSize.X,
-            CornerRadius = math.floor((Tokens.TabBarHeight - 6) / 2),
+            Size = UDim2.fromOffset(Tokens.SidebarWidth - 12, Tokens.SidebarTabHeight),
+            Position = UDim2.fromOffset(6, 6 + (index - 1) * (Tokens.SidebarTabHeight + Tokens.SidebarTabGap)),
+            CornerRadius = Tokens.PillCorner,
             Theme = "Card",
             BackgroundTransparency = 1,
-            Parent = window.TabBar,
+            Parent = window.Sidebar,
         })
-
-        local pillPadding = Instance.new("UIPadding")
-        pillPadding.PaddingLeft = UDim.new(0, 12)
-        pillPadding.PaddingRight = UDim.new(0, 12)
-        pillPadding.Parent = self.Pill
 
         self.Label = Render.New("Text", {
             Name = "TabLabel_" .. (props.Title or "Tab"),
             Text = props.Title or "Tab",
-            TextSize = 14,
-            Size = UDim2.new(0, 0, 1, 0),
-            AutomaticSize = Enum.AutomaticSize.X,
+            TextSize = 12,
+            Font = Enum.Font.Gotham,
+            Size = UDim2.new(1, -20, 1, 0),
+            Position = UDim2.fromOffset(10, 0),
             Theme = "Muted",
             Parent = self.Pill,
         })
 
         self.Page = Render.New("Frame", {
             Name = "TabPage_" .. (props.Title or "Tab"),
-            Size = UDim2.fromScale(1, 1),
+            Size = UDim2.new(1, 0, 0, 40),
             Theme = false, -- transparent passthrough container
             Visible = false,
             Parent = window.PageHolder,
         })
         self.Page.BackgroundTransparency = 1
+        self._cursor = 8 -- stacked sections height, synced into the canvas
 
-        local layout = Instance.new("UIListLayout")
-        layout.FillDirection = Enum.FillDirection.Vertical
-        layout.SortOrder = Enum.SortOrder.LayoutOrder
-        layout.Padding = UDim.new(0, 8)
-        layout.Parent = self.Page
+        attachStack(self.Page, {
+            PadX = 10,
+            Top = 8,
+            Gap = 10,
+            Bottom = 8,
+            OnGrow = function()
+                self._cursor = self.Page.Size.Y.Offset
+                window:_syncCanvas()
+            end,
+        })
 
         local btn = Instance.new("TextButton")
         btn.BackgroundTransparency = 1
@@ -240,105 +252,102 @@ return function(Modules)
             Parent = self.ScreenGui,
         })
 
-        if props.Title then
-            buildKernelChip("KernelChip", self.Root, 22, UDim2.fromOffset(8, 6))
+        ------------------------------------------------------------
+        -- Header: title (+ optional icon) left, minimize chip right
+        ------------------------------------------------------------
 
+        self.Header = Render.New("Frame", {
+            Name = "Header",
+            Size = UDim2.new(1, 0, 0, Tokens.TitleHeight),
+            Theme = false,
+            Parent = self.Root,
+        })
+        self.Header.BackgroundTransparency = 1
+
+        local titleOffset = 14
+        if props.Icon then
+            Render.New("Icon", {
+                Name = "TitleIcon",
+                Image = props.Icon,
+                Size = UDim2.fromOffset(18, 18),
+                Position = UDim2.fromOffset(12, 8),
+                Theme = false,
+                Parent = self.Header,
+            })
+            titleOffset = 36
+        end
+
+        if props.Title then
             Render.New("Text", {
                 Name = "TitleBar",
                 Text = props.Title,
                 TextSize = 15,
-                Size = UDim2.new(1, -100, 0, Tokens.TitleHeight),
-                Position = UDim2.fromOffset(38, 6),
+                Font = Enum.Font.GothamBold,
+                Size = UDim2.new(1, -(titleOffset + 44), 0, Tokens.TitleHeight),
+                Position = UDim2.fromOffset(titleOffset, 0),
                 Theme = "Default",
-                Parent = self.Root,
+                Parent = self.Header,
             })
-
-            -- Soft gold accent line under the title bar: a solid Enabled-role
-            -- bar whose transparency gradient fades the ends out.
-            local accent = Render.New("Frame", {
-                Name = "AccentLine",
-                Size = UDim2.new(1, -16, 0, Tokens.AccentLineHeight),
-                Position = UDim2.fromOffset(8, 6 + Tokens.TitleHeight + 4),
-                CornerRadius = 1,
-                Transparency = 0.25,
-                Theme = "Enabled",
-                Parent = self.Root,
-            })
-            Render.New("Gradient", {
-                Transparency = NumberSequence.new({
-                    NumberSequenceKeypoint.new(0, 1),
-                    NumberSequenceKeypoint.new(0.15, 0),
-                    NumberSequenceKeypoint.new(0.85, 0),
-                    NumberSequenceKeypoint.new(1, 1),
-                }),
-                Parent = accent,
-            })
-
-            -- Minimize chip: collapses the window to its title bar. Sits left
-            -- of the Cornelius chip (which lives in Elements/CommandPalette).
-            local minimizeChip = Render.New("Button", {
-                Name = "MinimizeChip",
-                Text = "–",
-                TextSize = 14,
-                Size = UDim2.fromOffset(24, 24),
-                Position = UDim2.new(1, -74, 0, 5),
-                CornerRadius = 8,
-                Theme = "Card",
-                Parent = self.Root,
-            })
-            minimizeChip.MouseButton1Click:Connect(function()
-                self:SetMinimized(not self:IsMinimized())
-            end)
         end
 
-        -- Invisible drag handle across the title bar. The window itself is
-        -- draggable (mobile-first: no title bar drag means no way to move
-        -- the window at all on touch).
+        -- Minimize chip: collapses the window to its header strip.
+        local minimizeChip = Render.New("Button", {
+            Name = "MinimizeChip",
+            Text = "–",
+            TextSize = 13,
+            Size = UDim2.fromOffset(22, 22),
+            Position = UDim2.new(1, -30, 0, 6),
+            CornerRadius = Tokens.PillCorner,
+            Theme = "Card",
+            Parent = self.Header,
+        })
+        minimizeChip.MouseButton1Click:Connect(function()
+            self:SetMinimized(not self:IsMinimized())
+        end)
+
+        -- Invisible drag handle across the header. The window itself is
+        -- draggable (mobile-first: no header drag means no way to move the
+        -- window at all on touch).
         self:_makeDraggable(self.Root, Render.New("Frame", {
             Name = "DragHandle",
-            Size = UDim2.new(1, -16, 0, 6 + Tokens.TitleHeight + 4),
-            Position = UDim2.fromOffset(8, 6),
+            Size = UDim2.new(1, 0, 0, Tokens.TitleHeight),
             BackgroundTransparency = 1,
             Theme = false,
             ZIndex = 50,
-            Parent = self.Root,
+            Parent = self.Header,
         }))
 
-        self.TabBar = Render.New("Frame", {
-            Name = "TabBar",
-            Size = UDim2.new(1, -16, 0, Tokens.TabBarHeight),
-            Position = UDim2.fromOffset(8, 6 + Tokens.TitleHeight + 4 + Tokens.AccentLineHeight + 8),
+        ------------------------------------------------------------
+        -- Body: 98px sidebar rail + scrollable page area
+        ------------------------------------------------------------
+
+        self.Sidebar = Render.New("Frame", {
+            Name = "Sidebar",
+            Size = UDim2.new(0, Tokens.SidebarWidth, 1, -Tokens.TitleHeight),
+            Position = UDim2.fromOffset(0, Tokens.TitleHeight),
             Theme = false,
             Parent = self.Root,
         })
-        self.TabBar.BackgroundTransparency = 1
+        self.Sidebar.BackgroundTransparency = 1
 
-        local tabLayout = Instance.new("UIListLayout")
-        tabLayout.FillDirection = Enum.FillDirection.Horizontal
-        tabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-        tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
-        tabLayout.Padding = UDim.new(0, 6)
-        tabLayout.Parent = self.TabBar
-
-        -- Sliding gold underline for the active tab (one instance, one
-        -- Position+Size tween per switch; instant on Low quality).
-        self.TabIndicator = Render.New("Frame", {
-            Name = "TabIndicator",
-            Size = UDim2.fromOffset(0, Tokens.IndicatorHeight),
-            Position = UDim2.fromOffset(0, Tokens.TabBarHeight - Tokens.IndicatorHeight),
-            CornerRadius = 2,
-            Theme = "Enabled",
-            Visible = false,
-            Parent = self.TabBar,
+        -- Hairline divider between the rail and the page area.
+        Render.New("Frame", {
+            Name = "SidebarDivider",
+            Size = UDim2.new(0, 1, 1, 0),
+            Position = UDim2.fromOffset(Tokens.SidebarWidth - 1, 0),
+            Theme = "Card",
+            Parent = self.Sidebar,
         })
 
         -- Scrollable page holder: overflowing tab content scrolls instead of
-        -- clipping at the window edge (Render "Scroll" keeps ClipsDescendants
-        -- off, which ScrollingFrame needs for input to work).
+        -- clipping at the window edge. Canvas height is driven explicitly by
+        -- _syncCanvas — no AutomaticCanvasSize, no list layouts.
         self.PageHolder = Render.New("Scroll", {
             Name = "PageHolder",
-            Size = UDim2.new(1, -16, 1, -(6 + Tokens.TitleHeight + 4 + Tokens.AccentLineHeight + 8 + Tokens.TabBarHeight + 6)),
-            Position = UDim2.fromOffset(8, 6 + Tokens.TitleHeight + 4 + Tokens.AccentLineHeight + 8 + Tokens.TabBarHeight + 6),
+            Size = UDim2.new(1, -Tokens.SidebarWidth, 1, -Tokens.TitleHeight),
+            Position = UDim2.fromOffset(Tokens.SidebarWidth, Tokens.TitleHeight),
+            CanvasSize = UDim2.new(),
+            AutomaticCanvasSize = Enum.AutomaticSize.None,
             Theme = false,
             Parent = self.Root,
         })
@@ -367,6 +376,18 @@ return function(Modules)
         -- Newest window lands on top of the stack (multi-window z-order).
         self:Focus()
 
+        -- Theme switches repaint pill/label bindings; re-run SelectTab so
+        -- the active pill keeps its gold fill + dark label under the new
+        -- palette. Disconnected on Destroy.
+        local themeResync = Theme.OnChanged:Connect(function()
+            if self.ActiveTab then
+                self:SelectTab(self.ActiveTab, true)
+            end
+        end)
+        self:OnCleanup(function()
+            themeResync:Disconnect()
+        end)
+
         return self
     end
 
@@ -376,6 +397,14 @@ return function(Modules)
         TopOrder += 1
         self.ScreenGui.DisplayOrder = TopOrder
         return self
+    end
+
+    -- Keeps the scroll canvas equal to the active page's stacked height.
+    function Window:_syncCanvas()
+        local active = self.ActiveTab
+        if active and self.PageHolder then
+            self.PageHolder.CanvasSize = UDim2.fromOffset(0, active._cursor + 8)
+        end
     end
 
     function Window:AddTab(title)
@@ -403,49 +432,36 @@ return function(Modules)
         return tab
     end
 
-    function Window:SelectTab(target)
+    function Window:SelectTab(target, instant)
         for _, tab in ipairs(self.Tabs) do
-            tab.Page.Visible = (tab == target)
-            -- Active pill fills with the Card color; inactive pills vanish.
-            -- (paint() manages only the color; transparency stays ours.)
-            tab.Pill.BackgroundTransparency = (tab == target) and 0 or 1
-            Modules.Theme.Apply(tab.Label, "Text", {
-                Theme = (tab == target) and "Default" or "Muted",
-            })
+            local active = (tab == target)
+            tab.Page.Visible = active
+            -- Active pill fills gold (Enabled role); inactive pills vanish.
+            -- Rebinding lets Theme.Set repaint the right role per state.
+            Modules.Theme.Apply(tab.Pill, "Frame", { Theme = active and "Enabled" or "Card" })
+            tab.Pill.BackgroundTransparency = active and 0 or 1
+            if active then
+                -- Dark label on the gold pill: use the Window (darkest) color
+                -- so the pairing holds on every theme.
+                local dark = Theme.GetStyle("Frame", "Window")
+                if dark and dark.Color then
+                    tab.Label.TextColor3 = dark.Color
+                end
+            else
+                Modules.Theme.Apply(tab.Label, "Text", { Theme = "Muted" })
+            end
         end
         self.ActiveTab = target
-        self:_moveIndicator(target, not Render.Motion())
+        self:_syncCanvas()
+        return self
     end
 
-    -- Slides the gold underline under the active tab pill. `instant` skips
-    -- the tween (Low quality / first placement).
-    function Window:_moveIndicator(tab, instant)
-        local indicator = self.TabIndicator
-        local width = tab.Pill.AbsoluteSize.X
-        local x = tab.Pill.AbsolutePosition.X - self.TabBar.AbsolutePosition.X
-
-        indicator.Visible = true
-        local targetPos = UDim2.fromOffset(x, Tokens.TabBarHeight - Tokens.IndicatorHeight)
-        local targetSize = UDim2.fromOffset(width, Tokens.IndicatorHeight)
-
-        if instant or width <= 0 then
-            indicator.Position = targetPos
-            indicator.Size = targetSize
-            return
-        end
-
-        local TweenService = game:GetService("TweenService")
-        TweenService:Create(indicator, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            Position = targetPos,
-            Size = targetSize,
-        }):Play()
-    end
-
-    -- Registers a function to run when the window is destroyed — elements and
-    -- sub-systems use this to disconnect their global UserInputService
+    -- Registers a function to run when the window is destroyed — elements
+    -- and sub-systems use this to disconnect their global UserInputService
     -- connections instead of leaking them for the rest of the session.
     function Window:OnCleanup(fn)
         table.insert(self._cleanups, fn)
+        return fn
     end
 
     -- Debounced config autosave tied to this window's lifetime: flags are
@@ -485,8 +501,7 @@ return function(Modules)
         end)
 
         local ended = UserInputService.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-                or input.UserInputType == Enum.UserInputType.Touch then
+            if dragging then
                 dragging = false
                 self:_snapIntoView()
             end
@@ -501,7 +516,7 @@ return function(Modules)
 
     -- Off-screen recovery: after a drag (and callable manually), clamps the
     -- window position so it can never get lost on small screens — 48px of
-    -- width and the title strip always stay visible. Pure clamp, no tween:
+    -- width and the header strip always stay visible. Pure clamp, no tween:
     -- instant correction costs nothing, even on Low quality.
     function Window:_snapIntoView()
         local camera = game:GetService("Workspace").CurrentCamera
@@ -580,8 +595,16 @@ return function(Modules)
                 Parent = self.FloatButton,
             })
         else
-            -- Default face: a mini kernel chip instead of a bare letter.
-            buildKernelChip("KernelChip", self.FloatButton, 18, UDim2.fromOffset(13, 13))
+            -- Default face: a small gold dot. (Keeps the "KernelChip" name —
+            -- compat hides it when a custom float icon is configured.)
+            Render.New("Frame", {
+                Name = "KernelChip",
+                Size = UDim2.fromOffset(10, 10),
+                Position = UDim2.fromOffset(17, 17),
+                CornerRadius = 5,
+                Theme = "Enabled",
+                Parent = self.FloatButton,
+            })
         end
 
         local button = Instance.new("TextButton")
@@ -674,135 +697,26 @@ return function(Modules)
     end
 
     ------------------------------------------------------------
-    -- Intro animation — Christmas release: "Merry Christmas!" greeting,
-    -- frosts over, then shatters to reveal the Window underneath.
-    -- Lighter than the first pass: 9 shards instead of 24, shorter holds,
-    -- and skipped entirely on Low quality (a full-screen overlay plus a
-    -- dozen tweens at startup is exactly the hitch weak phones feel).
+    -- Intro — a 0.2s fade-in, nothing more. The v2 frost/shatter overlay
+    -- (full-screen navy box + 9 shard tweens gating Root.Visible) stranded
+    -- windows on several executors and is gone for good: the window is
+    -- NEVER hidden by the intro, with or without motion.
     ------------------------------------------------------------
 
     function Window:PlayIntro(props)
         props = props or {}
+        self.Root.Visible = true
+
+        if not Render.Motion() then
+            self.Root.BackgroundTransparency = 0
+            return
+        end
+
+        self.Root.BackgroundTransparency = 1
         local TweenService = game:GetService("TweenService")
-
-        self.Root.Visible = false -- revealed by the shatter at the end
-
-        task.spawn(function()
-            local overlay = Instance.new("Frame")
-            overlay.Name = "IntroOverlay"
-            overlay.Size = self.Root.Size
-            overlay.Position = self.Root.Position
-            overlay.AnchorPoint = self.Root.AnchorPoint
-            overlay.BackgroundColor3 = Color3.fromRGB(18, 30, 46)
-            overlay.BorderSizePixel = 0
-            overlay.ZIndex = self.Root.ZIndex + 50
-            overlay.Parent = self.ScreenGui
-
-            local overlayCorner = Instance.new("UICorner")
-            overlayCorner.CornerRadius = UDim.new(0, 10)
-            overlayCorner.Parent = overlay
-
-            local greeting = Instance.new("TextLabel")
-            greeting.BackgroundTransparency = 1
-            greeting.Size = UDim2.fromScale(1, 1)
-            greeting.Text = props.Greeting or "Merry Christmas!"
-            greeting.TextColor3 = Color3.fromRGB(235, 245, 255)
-            greeting.TextSize = 28
-            greeting.Font = Enum.Font.GothamBold
-            greeting.TextTransparency = 1
-            greeting.ZIndex = overlay.ZIndex + 1
-            greeting.Parent = overlay
-
-            TweenService:Create(greeting, TweenInfo.new(0.35), { TextTransparency = 0 }):Play()
-            task.wait(0.9) -- hold the greeting on screen
-
-            -- Frostbite: an icy layer creeps over the text.
-            local frost = Instance.new("Frame")
-            frost.Name = "Frostbite"
-            frost.BackgroundColor3 = Color3.fromRGB(197, 232, 255)
-            frost.BackgroundTransparency = 1
-            frost.Size = UDim2.fromScale(1, 1)
-            frost.BorderSizePixel = 0
-            frost.ZIndex = overlay.ZIndex + 2
-            frost.Parent = overlay
-
-            local frostCorner = Instance.new("UICorner")
-            frostCorner.CornerRadius = UDim.new(0, 10)
-            frostCorner.Parent = frost
-
-            local frostGradient = Instance.new("UIGradient")
-            frostGradient.Rotation = 90
-            frostGradient.Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 0.1),
-                NumberSequenceKeypoint.new(0.5, 0),
-                NumberSequenceKeypoint.new(1, 0.1),
-            })
-            frostGradient.Parent = frost
-
-            TweenService:Create(frost, TweenInfo.new(0.45, Enum.EasingStyle.Sine), {
-                BackgroundTransparency = 0.05,
-            }):Play()
-            task.wait(0.55)
-
-            -- Shatter: tile into a grid of shards, fling outward + fade,
-            -- revealing the real Window once every shard is gone.
-            overlay.Visible = false
-
-            local screenOrigin = self.ScreenGui.AbsolutePosition
-            local overlaySize = overlay.AbsoluteSize
-            local overlayOrigin = overlay.AbsolutePosition - screenOrigin
-
-            local COLS, ROWS = 3, 3
-            local tileW = overlaySize.X / COLS
-            local tileH = overlaySize.Y / ROWS
-
-            local remaining = COLS * ROWS
-
-            for row = 0, ROWS - 1 do
-                for col = 0, COLS - 1 do
-                    local shard = Instance.new("Frame")
-                    shard.Name = "Shard"
-                    shard.BackgroundColor3 = frost.BackgroundColor3
-                    shard.BorderSizePixel = 0
-                    shard.Size = UDim2.fromOffset(tileW + 1, tileH + 1)
-                    shard.Position = UDim2.fromOffset(
-                        overlayOrigin.X + col * tileW,
-                        overlayOrigin.Y + row * tileH
-                    )
-                    shard.ZIndex = overlay.ZIndex + 3
-                    shard.Parent = self.ScreenGui
-
-                    local dirX = (col - COLS / 2) + (math.random() - 0.5)
-                    local dirY = (row - ROWS / 2) + (math.random() - 0.5)
-                    local mag = math.sqrt(dirX * dirX + dirY * dirY) + 0.001
-                    local travel = 120 + math.random(0, 60)
-
-                    local targetPos = shard.Position + UDim2.fromOffset(
-                        (dirX / mag) * travel,
-                        (dirY / mag) * travel
-                    )
-
-                    local tween = TweenService:Create(
-                        shard,
-                        TweenInfo.new(0.4 + math.random() * 0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-                        {
-                            Position = targetPos,
-                            BackgroundTransparency = 1,
-                            Rotation = (math.random() - 0.5) * 180,
-                        }
-                    )
-                    tween:Play()
-                    tween.Completed:Connect(function()
-                        shard:Destroy()
-                        remaining -= 1
-                        if remaining <= 0 then
-                            overlay:Destroy()
-                            self.Root.Visible = true
-                        end
-                    end)
-                end
-            end
-        end)
+        TweenService:Create(self.Root, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 0,
+        }):Play()
     end
 
     -- Shared by the floating button and manual calls — shows/hides Root
@@ -822,13 +736,13 @@ return function(Modules)
         end
     end
 
-    -- Minimize: collapse the window to its title bar (chip stays, drag
-    -- stays). The body (tab strip + page holder) is hidden and the Root
-    -- shrinks to a title-bar-tall strip; restoring puts the exact original
-    -- size back. Instant on Low quality, one tween otherwise.
+    -- Minimize: collapse the window to its header strip (drag stays). The
+    -- body (sidebar + page holder) is hidden and the Root shrinks to a
+    -- header-tall bar; restoring puts the exact original size back. Instant
+    -- on Low quality, one tween otherwise.
     function Window:SetMinimized(minimized)
         -- Titleless windows have no chip to restore from — never collapse them.
-        if not self.Root:FindFirstChild("MinimizeChip") then return end
+        if not self.Header:FindFirstChild("MinimizeChip") then return end
         minimized = minimized and true or false
         if self._minimized == minimized then return end
         self._minimized = minimized
@@ -841,9 +755,9 @@ return function(Modules)
         end
 
         local restore = self._restoreSize or self.Root.Size
-        local collapsedHeight = 6 + Tokens.TitleHeight + 4 + Tokens.AccentLineHeight + 6
+        local collapsedHeight = Tokens.TitleHeight + 8
 
-        self.TabBar.Visible = not minimized
+        self.Sidebar.Visible = not minimized
         self.PageHolder.Visible = not minimized
 
         local targetSize = minimized
@@ -869,6 +783,7 @@ return function(Modules)
     WindowModule.Section = Section
     WindowModule.Tab = Tab
     WindowModule.Window = Window
+    WindowModule.Stack = { Attach = attachStack } -- for Cards / custom hosts
 
     return WindowModule
 end
