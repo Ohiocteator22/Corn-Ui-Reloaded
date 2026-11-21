@@ -266,7 +266,7 @@ return function(Modules)
             if Render.Motion() then
                 panelPop.Scale = 0.97
                 TweenService:Create(overlay, TweenInfo.new(0.12), { BackgroundTransparency = 0.45 }):Play()
-                TweenService:Create(panelPop, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingStyle.Out), { Scale = 1 }):Play()
+                TweenService:Create(panelPop, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1 }):Play()
             else
                 overlay.BackgroundTransparency = 0.45
             end

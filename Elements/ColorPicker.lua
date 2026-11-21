@@ -195,7 +195,7 @@ return function(Modules)
             if self.Panel.Visible and Render.Motion() then
                 local TweenService = game:GetService("TweenService")
                 popScale.Scale = 0.97
-                TweenService:Create(popScale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingStyle.Out), { Scale = 1 }):Play()
+                TweenService:Create(popScale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1 }):Play()
             end
         end)
 

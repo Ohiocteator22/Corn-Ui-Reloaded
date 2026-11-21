@@ -493,7 +493,7 @@ return function(Modules)
             value = tonumber(value) or min
             local alpha = (max ~= min) and math.clamp((value - min) / (max - min), 0, 1) or 1
             if config.Animated ~= false and Render.Motion() then
-                game:GetService("TweenService"):Create(fill, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingStyle.Out), {
+                game:GetService("TweenService"):Create(fill, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                     Size = UDim2.new(alpha, 0, 1, 0),
                 }):Play()
             else

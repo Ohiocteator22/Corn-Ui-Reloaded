@@ -435,7 +435,7 @@ return function(Modules)
         end
 
         local TweenService = game:GetService("TweenService")
-        TweenService:Create(indicator, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingStyle.Out), {
+        TweenService:Create(indicator, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
             Position = targetPos,
             Size = targetSize,
         }):Play()
@@ -784,7 +784,7 @@ return function(Modules)
 
                     local tween = TweenService:Create(
                         shard,
-                        TweenInfo.new(0.4 + math.random() * 0.15, Enum.EasingStyle.Quad, Enum.EasingStyle.In),
+                        TweenInfo.new(0.4 + math.random() * 0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
                         {
                             Position = targetPos,
                             BackgroundTransparency = 1,
@@ -852,7 +852,7 @@ return function(Modules)
 
         if Render.Motion() then
             local TweenService = game:GetService("TweenService")
-            TweenService:Create(self.Root, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingStyle.Out), {
+            TweenService:Create(self.Root, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                 Size = targetSize,
             }):Play()
         else

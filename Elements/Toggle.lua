@@ -27,7 +27,7 @@ return function(Modules)
     Toggle.__index = Toggle
 
     local TweenService = game:GetService("TweenService")
-    local SLIDE_INFO = TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingStyle.Out)
+    local SLIDE_INFO = TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 
     function Toggle.New(section, props)
         props.Flag = props.Flag or Flags.NextAutoFlag()

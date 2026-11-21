@@ -178,8 +178,8 @@ return function(Modules)
                 if open then
                     popScale.Scale = 0.97
                     self.Marker.Rotation = 45
-                    TweenService:Create(popScale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingStyle.Out), { Scale = 1 }):Play()
-                    TweenService:Create(self.Marker, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingStyle.Out), { Rotation = 135 }):Play()
+                    TweenService:Create(popScale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+                    TweenService:Create(self.Marker, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Rotation = 135 }):Play()
                 else
                     self.Marker.Rotation = 45
                 end

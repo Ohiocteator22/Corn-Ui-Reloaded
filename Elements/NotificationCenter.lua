@@ -197,7 +197,7 @@ return function(Modules)
         local motion = Render.Motion()
         if motion then
             cardPop.Scale = 0.96
-            TweenService:Create(cardPop, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingStyle.Out), { Scale = 1 }):Play()
+            TweenService:Create(cardPop, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1 }):Play()
         end
         TweenService:Create(card, TweenInfo.new(0.2), { BackgroundTransparency = 0 }):Play()
         TweenService:Create(accentBar, TweenInfo.new(0.2), { BackgroundTransparency = 0 }):Play()
