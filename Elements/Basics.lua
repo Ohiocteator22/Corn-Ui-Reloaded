@@ -143,6 +143,7 @@ function TM:CreateButton(config)
     }, { corner(12), stroke() })
     btn.Parent = self._page
     setSearchMeta(btn, config, "Button")
+    if Library.Motion then Library.Motion.pressable(btn) end -- SEAM (draft 3): press squish
 
     local label = create("TextLabel", {
         Text = config.Name or "Button",
@@ -167,6 +168,13 @@ function TM:CreateButton(config)
         local ok, err = pcall(callback)
         if not ok then warn("[MobileUILib] Button callback error: " .. tostring(err)) end
     end)
+
+    -- SEAM (draft 2): buttons show up in the title-bar command dropdown.
+    -- Opt out with Palette = false.
+    local win = self._window
+    if win and win.RegisterPaletteItem and config.Palette ~= false and config.Name then
+        win:RegisterPaletteItem({ Name = config.Name, Tag = "Button", Run = function() callback() end })
+    end
 
     return Library:_wrapElement(btn)
 end

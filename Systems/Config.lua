@@ -76,7 +76,7 @@ function Library:SaveConfig(name)
 
     local data = {
         Flags = {},
-        Theme = Library._currentThemeName or "Dark",
+        Theme = Library._currentThemeName or "Frost",
         Skin = Library._currentSkinName,
         Version = Library.VERSION,
         Timestamp = os.time()
@@ -177,7 +177,7 @@ end
 function Library:ExportConfig(name)
     local data = {
         Flags = {},
-        Theme = Library._currentThemeName or "Dark",
+        Theme = Library._currentThemeName or "Frost",
         Skin = Library._currentSkinName,
         Version = Library.VERSION,
         Timestamp = os.time()

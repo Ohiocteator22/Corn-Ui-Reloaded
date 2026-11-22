@@ -31,7 +31,7 @@ local Library = CornUi
 
 local window = Library:CreateWindow({
     Name = "CornUi Showcase",
-    Theme = "Dark",
+    Theme = "Frost",
 })
 
 local mainTab = window:CreateTab("Main")

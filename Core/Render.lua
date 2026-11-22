@@ -180,7 +180,7 @@ local function stopBreathingGlow(glow, glowTween)
     if glow then glow:Destroy() end
 end
 
-local function ripple(button, color)
+local function classicRipple(button, color)
     button.ClipsDescendants = true
     local circle = create("Frame", {
         BackgroundColor3 = color,
@@ -197,6 +197,16 @@ local function ripple(button, color)
     task.delay(0.5, function()
         circle:Destroy()
     end)
+end
+
+-- SEAM (draft 3): ripple now delegates to Systems/Motion.lua ("Bloom");
+-- the original centered ripple above is kept as classicRipple.
+local function ripple(button, color)
+    local M = Library.Motion
+    if M and M.ripple then
+        return M.ripple(button, color)
+    end
+    return classicRipple(button, color)
 end
 
 local function shiftZIndex(root, offset)
@@ -298,6 +308,8 @@ end
         startBreathingGlow = startBreathingGlow,
         stopBreathingGlow = stopBreathingGlow,
         ripple = ripple,
+        classicRipple = classicRipple,
+        GetAnimationSpeed = function() return animationSpeed end,
         shiftZIndex = shiftZIndex,
         makeDraggable = makeDraggable,
         SetAnimationSpeed = function(factor)

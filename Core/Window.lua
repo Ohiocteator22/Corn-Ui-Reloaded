@@ -66,9 +66,9 @@ function Library:CreateWindow(config)
         iconId = "rbxassetid://" .. iconId
     end
 
-    local preset = Themes[config.Theme] or Themes.Ocean
+    local preset = Themes[config.Theme] or Themes.Frost
     for k, v in pairs(preset) do Theme[k] = v end
-    Library._currentThemeName = Themes[config.Theme] and config.Theme or "Ocean"
+    Library._currentThemeName = Themes[config.Theme] and config.Theme or "Frost"
 
     if #Library._themeHistory >= 5 then
         table.remove(Library._themeHistory, 1)
@@ -617,11 +617,32 @@ function Library:CreateWindow(config)
 
     Cornelius._window = Window
 
+    -- SEAM (draft 2): the command palette is a dropdown locked to this title box.
+    Window._titleBox = titleBox
+    if Modules.CommandPalette and Modules.CommandPalette.Attach then
+        Modules.CommandPalette.Attach(Window, titleBox, windowName)
+    end
+
+    -- SEAM (draft 4): Christmas decorations (lights, snow, icicles, holly, santa hat).
+    if Modules.Decor and Modules.Decor.Attach then
+        local okDecor, errDecor = pcall(Modules.Decor.Attach, Window, {
+            main = main, header = header, floatBtn = floatBtn, config = config.Decor,
+        })
+        if not okDecor then
+            warn("[CornUi] Decor failed: " .. tostring(errDecor))
+        end
+    end
+
     titleBox.Focused:Connect(function()
         titleBox.Text = ""
     end)
 
-    titleBox.FocusLost:Connect(function()
+    titleBox.FocusLost:Connect(function(enterPressed)
+        -- SEAM (draft 2): the palette may consume the event (row chosen, blur, Esc).
+        if Window._paletteConsume and Window._paletteConsume(enterPressed, titleBox.Text) then
+            titleBox.Text = windowName
+            return
+        end
         local raw = titleBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
         if raw ~= "" then
             if raw:match("^/cornelius") then
@@ -664,6 +685,7 @@ function Library:CreateWindow(config)
     end)
 
     titleBox.InputBegan:Connect(function(input)
+        if Window._paletteOpen then return end -- SEAM (draft 2): Up/Down belong to the dropdown
         if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.Up then
             if #Library.CommandHistory > 0 then
                 commandIndex = math.max(1, commandIndex - 1)
@@ -711,6 +733,24 @@ function Library:CreateWindow(config)
 
     if Library.Flags.ReducedMotion or not Library.Flags.ShowIntro then
         return Window
+    end
+
+    -- SEAM (draft 1): seasonal intro. Intro = false skips; Intro.Style =
+    -- "Classic" keeps the original wipe intro below.
+    if config.Intro == false then
+        return Window
+    end
+    do
+        local ic = type(config.Intro) == "table" and config.Intro or {}
+        if ic.Style ~= "Classic" and Modules.ChristmasIntro then
+            local ok, err = pcall(Modules.ChristmasIntro.Play, screenGui, ic)
+            if ok then
+                return Window
+            end
+            warn("[CornUi] Christmas intro failed, using classic intro: " .. tostring(err))
+            local stale = screenGui:FindFirstChild("IntroOverlay")
+            if stale then stale:Destroy() end
+        end
     end
 
     local introConfig = config.Intro or {}
@@ -1612,6 +1652,7 @@ function WM:CreateTab(name, config)
     end
 
     tabButton.MouseButton1Click:Connect(selectTab)
+    tabEntry.select = selectTab -- SEAM (draft 2): lets the palette jump to this tab
 
     tabButton.MouseEnter:Connect(function()
         if self._currentPageEntry ~= tabEntry and not tabButton:FindFirstChild("_HoverGlow") then

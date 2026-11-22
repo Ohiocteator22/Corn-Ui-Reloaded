@@ -171,7 +171,7 @@ function Library:RegisterTheme(name, themeTable)
 end
 
 local Theme = {}
-for k, v in pairs(Themes.Dark) do Theme[k] = v end
+for k, v in pairs(Themes.Frost) do Theme[k] = v end
 
 -- ============ SKIN SYSTEM (lines 563-655) ============
 

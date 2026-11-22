@@ -52,10 +52,12 @@ local BASE = "https://raw.githubusercontent.com/Ohiocteator22/Corn-Ui-Reloaded/m
 local Manifest = {
     { Name = "Render",             Path = "Core/Render.lua" },
     { Name = "Theme",              Path = "Core/Theme.lua" },
+    { Name = "Motion",             Path = "Systems/Motion.lua" },
     { Name = "Flags",              Path = "Systems/Flags.lua" },
     { Name = "AssetsEmbed",        Path = "Systems/AssetsEmbed.lua" },
     { Name = "Assets",             Path = "Systems/Assets.lua" },
     { Name = "Host",               Path = "Systems/Host.lua" },
+    { Name = "ChristmasIntro",     Path = "Systems/ChristmasIntro.lua" },
     { Name = "Commands",           Path = "Systems/Commands.lua" },
     { Name = "Window",             Path = "Core/Window.lua" },
     { Name = "Config",             Path = "Systems/Config.lua" },
@@ -76,6 +78,7 @@ local Manifest = {
     { Name = "ThemeEditor",        Path = "Elements/ThemeEditor.lua" },
     { Name = "PluginManager",      Path = "Elements/PluginManager.lua" },
     { Name = "CommandPalette",     Path = "Elements/CommandPalette.lua" },
+    { Name = "Decor",              Path = "Systems/Decor.lua" },
     -- Compat LAST: attaches the full v1.9.3 API (Library:CreateWindow,
     -- window:CreateTab, tab:CreateSection, every Create___ element method on
     -- tab/section/card, Flags/Config/Theme shims) on top of the modules.

@@ -1,5 +1,15 @@
 --[[
-    CreateToggle (incl. three-state) — verbatim v1.9.4d.
+    CreateToggle (incl. three-state) — v1.9.4d logic + draft-3 motion pass.
+
+    Draft 3: the knob now springs (Back easing) with a stretch pulse, the track
+    color eases, a ring bursts from the knob and the row blooms. Also fixes the
+    two known defects: the three-state click crashed on a nil `stateLabel`, and
+    handle.Set called MouseButton1Click:Fire() (signals have no Fire). Three-state
+    values are now the strings "off" / "auto" / "on", matching Default and Set.
+    Set() applies the value (callback + flag, no click sound); a real click
+    plays the sound.
+
+    (Original header follows.)
 
     The Lua below is the v1.9.4d source, verbatim, split out of the original
     monolith. Only the prelude (binding the monolith's file-local upvalues to
@@ -39,20 +49,51 @@ function TM:CreateToggle(config)
     local touch = self._touch
     local compact = Library.Flags.CompactMode
     local threeState = config.ThreeState or false
+    local Motion = Library.Motion
 
-    local states = threeState and {"off", "auto", "on"} or {false, true}
-    local stateIndex = 1
-    local state = config.Default or (threeState and "auto" or false)
-
-    if threeState then
-        if state == "on" then stateIndex = 3
-        elseif state == "auto" then stateIndex = 2
-        else stateIndex = 1 end
-    else
-        if state then stateIndex = 2 else stateIndex = 1 end
-    end
+    local sw = touch and (compact and 42 or 50) or (compact and 34 or 40) -- switch width
+    local sh = touch and (compact and 24 or 28) or (compact and 18 or 22) -- switch height
+    local k = touch and (compact and 18 or 22) or (compact and 14 or 16)  -- knob size
+    local OFF_COLOR = Color3.fromRGB(60, 60, 68)
+    local MID_COLOR = Color3.fromRGB(150, 150, 150)
 
     local callback = config.Callback or function() end
+
+    local function normalize(value)
+        if threeState then
+            if value == "on" or value == true then return "on" end
+            if value == "off" or value == false then return "off" end
+            return "auto"
+        end
+        return value and true or false
+    end
+
+    local state = normalize(config.Default)
+    if threeState and config.Default == nil then state = "auto" end
+
+    -- tween through Motion when available, otherwise assign directly
+    local function tw(inst, props, t, style)
+        if Motion then
+            Motion.tw(inst, props, t, style)
+        else
+            for prop, value in pairs(props) do inst[prop] = value end
+        end
+    end
+
+    local function look(s)
+        if threeState then
+            if s == "on" then
+                return Theme.Accent, UDim2.new(1, -(k + 3), 0.5, 0), "+"
+            elseif s == "auto" then
+                return MID_COLOR, UDim2.new(0.5, -k / 2, 0.5, 0), "−"
+            end
+            return OFF_COLOR, UDim2.new(0, 3, 0.5, 0), "×"
+        end
+        if s then
+            return Theme.Accent, UDim2.new(1, -(k + 3), 0.5, 0), nil
+        end
+        return OFF_COLOR, UDim2.new(0, 3, 0.5, 0), nil
+    end
 
     local holder = create("Frame", {
         Size = UDim2.new(1, 0, 0, touch and (compact and 38 or 46) or (compact and 28 or 34)),
@@ -74,28 +115,30 @@ function TM:CreateToggle(config)
         TextXAlignment = Enum.TextXAlignment.Left,
     }).Parent = holder
 
+    local startColor, startPos, startGlyph = look(state)
+
     local switchBg = create("Frame", {
-        Size = UDim2.new(0, touch and (compact and 42 or 50) or (compact and 34 or 40), 0, touch and (compact and 24 or 28) or (compact and 18 or 22)),
+        Size = UDim2.new(0, sw, 0, sh),
         Position = UDim2.new(1, touch and (compact and -52 or -60) or (compact and -42 or -48), 0.5, 0),
         AnchorPoint = Vector2.new(0, 0.5),
-        BackgroundColor3 = threeState and Color3.fromRGB(100, 100, 100) or (state and Theme.Accent or Color3.fromRGB(60, 60, 68)),
+        BackgroundColor3 = startColor,
     }, { corner(18) })
     switchBg.Parent = holder
     switchBg:SetAttribute("MUI_AccentSurface", true) -- eligible for a Skin's AccentTexture whenever it's actually accent-colored
-    Library:_applyAccentOverlay(switchBg, switchBg.BackgroundColor3 == Theme.Accent)
+    Library:_applyAccentOverlay(switchBg, startColor == Theme.Accent)
 
     local knob = create("Frame", {
-        Size = UDim2.new(0, touch and (compact and 18 or 22) or (compact and 14 or 16), 0, touch and (compact and 18 or 22) or (compact and 14 or 16)),
-        Position = threeState and UDim2.new(0.5, -((touch and (compact and 18 or 22) or (compact and 14 or 16)) / 2), 0.5, 0) or
-            (state and UDim2.new(1, -((touch and (compact and 18 or 22) or (compact and 14 or 16)) + 3), 0.5, 0) or UDim2.new(0, 3, 0.5, 0)),
+        Size = UDim2.fromOffset(k, k),
+        Position = startPos,
         AnchorPoint = Vector2.new(0, 0.5),
         BackgroundColor3 = Color3.fromRGB(255, 255, 255),
     }, { corner(15) })
     knob.Parent = switchBg
 
+    local stateLabel
     if threeState then
-        local stateLabel = create("TextLabel", {
-            Text = "−",
+        stateLabel = create("TextLabel", {
+            Text = startGlyph,
             Font = Enum.Font.GothamBold,
             TextSize = touch and 14 or 12,
             TextColor3 = Color3.fromRGB(100, 100, 100),
@@ -112,51 +155,54 @@ function TM:CreateToggle(config)
     })
     hitArea.Parent = holder
 
-    hitArea.MouseButton1Click:Connect(function()
-        if threeState then
-            stateIndex = (stateIndex % 3) + 1
-            local states_map = {1, 2, 3}
-            state = states_map[stateIndex]
-        else
-            state = not state
-        end
+    -- Visuals only: animates when `animate` is true. No flag / callback here.
+    local function apply(newState, animate)
+        state = newState
+        local color, pos, glyph = look(state)
+        if stateLabel and glyph then stateLabel.Text = glyph end
 
-        if threeState then
-            if state == 3 then
-                switchBg.BackgroundColor3 = Theme.Accent
-                knob.Position = UDim2.new(1, -((touch and (compact and 18 or 22) or (compact and 14 or 16)) + 3), 0.5, 0)
-                stateLabel.Text = "+"
-            elseif state == 2 then
-                switchBg.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
-                knob.Position = UDim2.new(0.5, -((touch and (compact and 18 or 22) or (compact and 14 or 16)) / 2), 0.5, 0)
-                stateLabel.Text = "−"
-            else
-                switchBg.BackgroundColor3 = Color3.fromRGB(60, 60, 68)
-                knob.Position = UDim2.new(0, 3, 0.5, 0)
-                stateLabel.Text = "×"
+        if animate then
+            tw(switchBg, { BackgroundColor3 = color }, 0.22, Enum.EasingStyle.Sine)
+            tw(knob, { Position = pos }, 0.34, Enum.EasingStyle.Back)
+            -- liquid stretch while travelling
+            tw(knob, { Size = UDim2.fromOffset(k + 6, k - 2) }, 0.08, Enum.EasingStyle.Quad)
+            task.delay(0.08, function()
+                tw(knob, { Size = UDim2.fromOffset(k, k) }, 0.26, Enum.EasingStyle.Back)
+            end)
+            if Motion then
+                local cx = pos.X.Scale * sw + pos.X.Offset + k / 2
+                local burstColor = (color == Theme.Accent) and Theme.Accent or Color3.fromRGB(220, 220, 230)
+                Motion.burst(switchBg, UDim2.fromOffset(cx, sh / 2), burstColor, k * 2.6)
+                if color == Theme.Accent then ripple(holder, Theme.Accent) end
             end
         else
-            switchBg.BackgroundColor3 = state and Theme.Accent or Color3.fromRGB(60, 60, 68)
-            knob.Position = state and UDim2.new(1, -((touch and (compact and 18 or 22) or (compact and 14 or 16)) + 3), 0.5, 0) or UDim2.new(0, 3, 0.5, 0)
+            switchBg.BackgroundColor3 = color
+            knob.Position = pos
         end
-        Library:_applyAccentOverlay(switchBg, switchBg.BackgroundColor3 == Theme.Accent)
+        Library:_applyAccentOverlay(switchBg, color == Theme.Accent)
+    end
 
+    local function commit(newState, playSound)
+        apply(newState, newState ~= state)
         if config.Flag then Library:SetFlag(config.Flag, state) end
-        playInteractionSound("toggle")
+        if playSound then playInteractionSound("toggle") end
         local ok, err = pcall(callback, state)
         if not ok then warn("[MobileUILib] Toggle callback error: " .. tostring(err)) end
+    end
+
+    local NEXT = { off = "auto", auto = "on", on = "off" }
+
+    hitArea.MouseButton1Click:Connect(function()
+        if threeState then
+            commit(NEXT[state], true)
+        else
+            commit(not state, true)
+        end
     end)
 
     local handle = {
         Set = function(_, value)
-            if threeState then
-                if value == "on" then stateIndex = 3
-                elseif value == "auto" then stateIndex = 2
-                else stateIndex = 1 end
-            else
-                state = value
-            end
-            hitArea.MouseButton1Click:Fire()
+            commit(normalize(value), false)
         end,
         Get = function() return state end
     }
